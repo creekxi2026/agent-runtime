@@ -5,6 +5,9 @@ runtime.env
 *.key
 *.pem
 auth.json
+shared-codex/*
+!shared-codex/*.example
+*.before-shared
 credentials.json
 *.db
 *.sqlite*

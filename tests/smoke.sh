@@ -4,7 +4,8 @@ set -eu
 export IMAGE
 project="agent-smoke-$$"
 shared=$(mktemp -d)
-export SHARED_SKILLS_DIR="$shared"
+export SHARED_SKILLS_DIR="$shared/skills"
+export SHARED_CODEX_DIR="$shared/codex"
 reader_a=''
 reader_b=''
 compose() { p=$1; shift; docker compose -f compose.yaml -f tests/compose.yaml --env-file runtime.env.example -p "$p" "$@"; }
@@ -17,11 +18,35 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 # World-writable test fixture: EROFS must come from the mount, not UNIX modes.
-mkdir -p "$shared/runtime-shared-smoke"
-printf '%s\n' '---' 'name: runtime-shared-smoke' 'description: Shared smoke revision-before' '---' '# Shared smoke fixture' > "$shared/runtime-shared-smoke/SKILL.md"
-chmod 755 "$shared"
-chmod 777 "$shared/runtime-shared-smoke"
-chmod 666 "$shared/runtime-shared-smoke/SKILL.md"
+mkdir -p "$SHARED_SKILLS_DIR/runtime-shared-smoke" "$SHARED_CODEX_DIR"
+printf '%s\n' '---' 'name: runtime-shared-smoke' 'description: Shared smoke revision-before' '---' '# Shared smoke fixture' > "$SHARED_SKILLS_DIR/runtime-shared-smoke/SKILL.md"
+chmod 755 "$shared" "$SHARED_SKILLS_DIR"
+chmod 777 "$SHARED_CODEX_DIR"
+# Invalid local-only fixtures: never call a model or claim authentication.
+write_codex_fixture() {
+  python3 - "$1" <<'PY'
+import json
+import os
+from pathlib import Path
+import sys
+
+root = Path(os.environ["SHARED_CODEX_DIR"])
+revision = sys.argv[1]
+files = {
+    "config.toml": 'cli_auth_credentials_store = "file"\nmodel = "runtime-fixture-' + revision + '"\n',
+    "auth.json": json.dumps({"auth_mode": "apikey", "OPENAI_API_KEY":
+                              "INVALID-TEST-ONLY-NOT-A-REAL-KEY-" + revision}) + "\n",
+}
+for name, content in files.items():
+    temporary = root / (name + ".tmp")
+    temporary.write_text(content)
+    temporary.chmod(0o666)
+    os.replace(temporary, root / name)
+PY
+}
+write_codex_fixture before
+chmod 777 "$SHARED_SKILLS_DIR/runtime-shared-smoke"
+chmod 666 "$SHARED_SKILLS_DIR/runtime-shared-smoke/SKILL.md"
 sh -n entrypoint.sh
 python3 tests/test_entrypoint.py
 docker compose --env-file runtime.env.example config --quiet
@@ -45,7 +70,8 @@ reader_b=$(compose "$project-b" run --no-deps -d runtime sleep 300)
 for reader in "$reader_a" "$reader_b"; do
   timeout 90 docker exec -i "$reader" python3 - before < tests/codex_skills_probe.py
 done
-printf '%s\n' '---' 'name: runtime-shared-smoke' 'description: Shared smoke revision-after' '---' '# Shared smoke fixture' > "$shared/runtime-shared-smoke/SKILL.md"
+printf '%s\n' '---' 'name: runtime-shared-smoke' 'description: Shared smoke revision-after' '---' '# Shared smoke fixture' > "$SHARED_SKILLS_DIR/runtime-shared-smoke/SKILL.md"
+write_codex_fixture after
 for reader in "$reader_a" "$reader_b"; do
   timeout 90 docker exec -i "$reader" python3 - after < tests/codex_skills_probe.py
 done
@@ -59,4 +85,4 @@ else
   grep -qi 'not authenticated' "$log"
 fi
 rm "$log"
-printf '%s\n' 'PASS: offline startup, real tool binaries, no Podman/socket, non-root/read-only, per-user persistence, real Codex shared-skills discovery and live host update for two users, read-only shared mount, missing-auth rejection.'
+printf '%s\n' 'PASS: offline startup, real tool binaries, no Podman/socket, non-root/read-only, per-user persistence, real Codex shared-skills/config parsing and API-key account type (not authentication), atomic shared-file update for two users, read-only shared mounts, missing-auth rejection.'

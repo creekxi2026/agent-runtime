@@ -10,7 +10,7 @@ services:
       MULTICA_SERVER_URL: ${MULTICA_SERVER_URL:-}
       MULTICA_APP_URL: ${MULTICA_APP_URL:-}
       MULTICA_BOOTSTRAP_TOKEN: ${MULTICA_BOOTSTRAP_TOKEN:-}
-      CODEX_BOOTSTRAP_API_KEY: ${CODEX_BOOTSTRAP_API_KEY:-}
+      CODEX_SHARED_DIR: /shared/codex
       LARK_APP_ID: ${LARK_APP_ID:-}
       LARK_APP_SECRET: ${LARK_APP_SECRET:-}
       LARK_BRAND: ${LARK_BRAND:-feishu}
@@ -20,6 +20,12 @@ services:
       MULTICA_DAEMON_MAX_CONCURRENT_TASKS: ${MAX_CONCURRENT_TASKS:-1}
     volumes:
       - data:/data
+      - type: bind
+        source: ${SHARED_CODEX_DIR:?请在 runtime.env 设置共享 Codex 专用配置目录}
+        target: /shared/codex
+        read_only: true
+        bind:
+          create_host_path: false
       - type: bind
         source: ${SHARED_SKILLS_DIR:?请在 runtime.env 设置共享 skills 目录}
         target: /data/.agents/skills
