@@ -1,0 +1,13 @@
+runtime.env
+.env
+.env.*
+!runtime.env.example
+*.key
+*.pem
+auth.json
+credentials.json
+*.db
+*.sqlite*
+node_modules/
+.local/
+.DS_Store

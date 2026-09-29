@@ -1,0 +1,32 @@
+# 启动：docker compose --env-file runtime.env up -d
+# 日志：docker compose --env-file runtime.env logs -f
+# 停止：docker compose --env-file runtime.env down（加 -v 删除该用户数据）
+name: ${COMPOSE_PROJECT_NAME:?请在 runtime.env 填写唯一实例名}
+services:
+  runtime:
+    image: ${IMAGE:?请在 runtime.env 设置 IMAGE}
+    user: "1000:1000"
+    environment:
+      MULTICA_SERVER_URL: ${MULTICA_SERVER_URL:-}
+      MULTICA_APP_URL: ${MULTICA_APP_URL:-}
+      MULTICA_BOOTSTRAP_TOKEN: ${MULTICA_BOOTSTRAP_TOKEN:-}
+      CODEX_BOOTSTRAP_API_KEY: ${CODEX_BOOTSTRAP_API_KEY:-}
+      LARK_APP_ID: ${LARK_APP_ID:-}
+      LARK_APP_SECRET: ${LARK_APP_SECRET:-}
+      LARK_BRAND: ${LARK_BRAND:-feishu}
+      PLAYWRIGHT_WS_ENDPOINT: ${PLAYWRIGHT_WS_ENDPOINT:-}
+      MULTICA_DAEMON_DEVICE_NAME: ${COMPOSE_PROJECT_NAME}
+      MULTICA_AGENT_RUNTIME_NAME: ${COMPOSE_PROJECT_NAME}
+      MULTICA_DAEMON_MAX_CONCURRENT_TASKS: ${MAX_CONCURRENT_TASKS:-1}
+    volumes:
+      - data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: ${MEMORY_LIMIT:-4g}
+    cpus: ${CPU_LIMIT:-2}
+    pids_limit: 512
+    restart: "no"
+volumes:
+  data:
