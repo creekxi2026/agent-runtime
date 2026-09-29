@@ -11,3 +11,4 @@ credentials.json
 node_modules/
 .local/
 .DS_Store
+__pycache__/

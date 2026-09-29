@@ -7,7 +7,7 @@ ARG PLAYWRIGHT_CLI_VERSION=0.1.22
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm install -g --prefix /opt/agent-tools --no-audit --no-fund \
       "@larksuite/cli@${LARK_CLI_VERSION}" "@playwright/cli@${PLAYWRIGHT_CLI_VERSION}" \
-    && mkdir -p /data/.codex /data/workspace \
+    && mkdir -p /data/.codex /data/.agents/skills /data/workspace \
     && chown -R 1000:1000 /data \
     && rm -rf /root/.npm
 COPY --chmod=755 entrypoint.sh /usr/local/bin/agent-entrypoint

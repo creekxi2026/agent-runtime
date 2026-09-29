@@ -1,0 +1,5 @@
+# Test the local build without exposing a full-image override to end users.
+services:
+  runtime:
+    image: ${IMAGE:?Set IMAGE to the locally built image}
+    network_mode: none

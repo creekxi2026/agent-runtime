@@ -1,16 +1,37 @@
-name: Build, test and publish
+name: Check upstream, test and publish
 on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: '23 1 * * *'
 permissions:
   contents: read
-  packages: write
 concurrency:
-  group: publish-${{ github.ref }}
+  group: agent-runtime-publish
   cancel-in-progress: false
 jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.upstream.outputs.changed }}
+      base_image: ${{ steps.upstream.outputs.base_image }}
+      base_digest: ${{ steps.upstream.outputs.base_digest }}
+      build_tag: ${{ steps.upstream.outputs.build_tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Resolve upstream and compare published image
+        id: upstream
+        run: python3 scripts/check_upstream.py
   build:
+    needs: check
+    if: needs.check.outputs.changed == 'true'
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -24,8 +45,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Build
-        run: docker build --pull -t agent-runtime:test .
+      - name: Build the resolved immutable upstream
+        env:
+          BASE_IMAGE: ${{ needs.check.outputs.base_image }}
+          BASE_DIGEST: ${{ needs.check.outputs.base_digest }}
+          BUILD_TAG: ${{ needs.check.outputs.build_tag }}
+        run: |
+          docker build --pull --build-arg BASE_IMAGE="$BASE_IMAGE" \
+            --label "org.opencontainers.image.base.name=$BASE_IMAGE" \
+            --label "org.opencontainers.image.base.digest=$BASE_DIGEST" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=$BUILD_TAG" \
+            -t agent-runtime:test .
       - name: Test without user credentials
         env:
           IMAGE: agent-runtime:test
@@ -38,26 +69,31 @@ jobs:
       - name: Push tested architecture
         env:
           ARCH: ${{ matrix.arch }}
+          BUILD_TAG: ${{ needs.check.outputs.build_tag }}
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}-${ARCH}"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:$BUILD_TAG-$ARCH"
           docker tag agent-runtime:test "$image"
           docker push "$image"
   publish:
-    needs: build
+    needs: [check, build]
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish multi-platform manifest
+      - name: Publish tested multi-platform image
+        env:
+          BUILD_TAG: ${{ needs.check.outputs.build_tag }}
         run: |
-          version=$(<VERSION)
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          docker buildx imagetools create -t "$image:$version" -t "$image:latest" \
-            "$image:sha-${GITHUB_SHA}-amd64" "$image:sha-${GITHUB_SHA}-arm64"
-          docker buildx imagetools inspect "$image:$version"
+          docker buildx imagetools create -t "$image:$BUILD_TAG" -t "$image:latest" \
+            "$image:$BUILD_TAG-amd64" "$image:$BUILD_TAG-arm64"
+          docker buildx imagetools inspect "$image:$BUILD_TAG"
+          printf 'Published `%s:%s` and `latest`\n' "$image" "$BUILD_TAG" >> "$GITHUB_STEP_SUMMARY"

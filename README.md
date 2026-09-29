@@ -29,6 +29,26 @@ docker compose --env-file runtime.env up -d
 
 `runtime.env` 是明文配置，不是加密凭据库。环境变量方式初始化后可清空 Token/Secret，再 `up -d --force-recreate`；保存的认证状态仍在独立数据卷中。飞书应用仅在配置文件不存在时初始化，重启不会覆盖已有用户授权；更换飞书应用请显式使用 CLI 配置命令。Multica Agent 的工具环境变量和 MCP 配置可在 Multica 中管理。应用身份和用户 OAuth 是不同权限。
 
+## 共享 skills
+
+同一 Docker 宿主机上的用户将 `SHARED_SKILLS_DIR` 指向同一个管理员维护的目录，所有容器只读挂载到 `/data/.agents/skills`。默认布局：
+
+```text
+部署根目录/
+├── shared-skills/
+│   └── 技能名/SKILL.md
+├── user01/compose.yaml + runtime.env
+└── user02/compose.yaml + runtime.env
+```
+
+每份 `runtime.env` 保留独立的 `COMPOSE_PROJECT_NAME`，共享目录填 `../shared-skills`，也可填宿主机绝对路径。目录不存在时 Compose 会创建空目录；管理员在宿主机放入技能，确保容器 UID 1000 可读取。更新技能内容只改这一个目录，不需要逐用户更新或重建镜像。不同宿主机需自行同步这份目录，不会跨主机自动共享。
+
+Multica 的 Agent → Skills 可请求在线 runtime 扫描本地技能并控制是否禁用；本地技能默认继承，不是勾选前不可见。新任务读取最新技能，已运行任务不保证热更新。不要再在各用户 `.codex/skills` 保留同名旧副本，它们会优先于共享目录。共享目录不放 Token、私有数据或只应对部分用户开放的技能；技能中的脚本应把输出和缓存写到用户自己的工作目录，不能写回只读技能目录。
+
+**不要为保持同步而点“Copy from a runtime”**：那会生成中心库快照，不自动跟随宿主文件变化。同一个 Multica workspace 也可以直接维护其内置 Skills 库并分配给多个 Agent；这种方式不依赖宿主目录。两种来源避免同名冲突。
+
+只共享 skills，不共享 `.codex`／`.agents` 整目录、用户凭据、会话和任务工作区。技能开关不是文件访问安全边界。
+
 ## 浏览器（可选）
 
 Mac 上另行部署每用户独立的 Playwright 服务，将其 WebSocket 地址填入 `PLAYWRIGHT_WS_ENDPOINT`：
@@ -41,14 +61,21 @@ docker compose --env-file runtime.env exec runtime sh -c 'playwright-cli attach 
 
 ## 更新
 
-修改 `runtime.env` 中的 `IMAGE`，再执行：
+`runtime.env` 只需填写 `IMAGE_TAG`：默认 `latest`，也可固定到某次发布的 `0.2.0-build-<run-id>-<attempt>` 标签。旧模板升级时，保留原文件和用户凭据，完成这两项再运行更新命令：
+
+1. 将完整 `IMAGE` 字段改为 `IMAGE_TAG`（例如 `IMAGE_TAG=latest`，或保留指定版本）。
+2. 追加 `SHARED_SKILLS_DIR=../shared-skills`，或填入所有用户共用的宿主机目录。该字段是必填项，不会静默选择未知的共享目录。
+
+然后执行：
 
 ```bash
 docker compose --env-file runtime.env pull
 docker compose --env-file runtime.env up -d
 ```
 
-上游基础镜像固定 digest；补充工具版本在 Dockerfile 中指定。修改后由公开仓库的标准 GitHub-hosted runners 构建、测试两个架构，全部通过后发布版本标签和 latest。没有自动定时升级部署，用户自行选择镜像版本。
+每天北京时间 **09:23**，以及推送 main／手动触发时，检查上游 `ghcr.io/sapk/multica-agent-codex:latest`。上游 digest 和本仓库提交均未变化则跳过构建；有变化时先解析为固定 digest，让两个架构使用同一基础镜像。真实容器测试全部通过后才发布唯一构建标签和 `latest`，失败保留原 `latest`，不覆盖旧的 `0.1.0` 版本。补充的 lark-cli／playwright-cli 版本仍在 Dockerfile 中固定，由维护者更新。
+
+只自动更新镜像仓库，**不自动升级运行中的容器**。公开仓库使用标准 GitHub-hosted runners，GHCR 存储／流量按 GitHub 当前政策免费；不使用付费大型 runner。GitHub 定时任务可能延迟，公开仓库连续 60 天无活动会停用定时任务，需要在 Actions 页面重新启用。
 
 ## 运行边界
 

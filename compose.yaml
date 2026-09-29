@@ -4,7 +4,7 @@
 name: ${COMPOSE_PROJECT_NAME:?请在 runtime.env 填写唯一实例名}
 services:
   runtime:
-    image: ${IMAGE:?请在 runtime.env 设置 IMAGE}
+    image: ghcr.io/creekxi2026/agent-runtime:${IMAGE_TAG:-latest}
     user: "1000:1000"
     environment:
       MULTICA_SERVER_URL: ${MULTICA_SERVER_URL:-}
@@ -20,6 +20,12 @@ services:
       MULTICA_DAEMON_MAX_CONCURRENT_TASKS: ${MAX_CONCURRENT_TASKS:-1}
     volumes:
       - data:/data
+      - type: bind
+        source: ${SHARED_SKILLS_DIR:?请在 runtime.env 设置共享 skills 目录}
+        target: /data/.agents/skills
+        read_only: true
+        bind:
+          create_host_path: true
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
