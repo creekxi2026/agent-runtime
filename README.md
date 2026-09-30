@@ -73,9 +73,9 @@ docker compose --env-file runtime.env exec runtime sh -c 'playwright-cli attach 
 
 ## 更新
 
-`runtime.env` 只需填写 `IMAGE_TAG`：默认 `latest`，也可固定到某次发布的 `0.3.0-build-<run-id>-<attempt>` 标签。旧模板升级时，保留原文件和用户凭据，按需补齐以下设置再运行更新命令：
+`runtime.env` 的 `IMAGE_TAG` 使用 `latest`。镜像仓库只保留这一个公开标签，不再发布版本、构建或架构标签；历史标签会自动清理，不再作为固定版本或回滚入口。旧模板升级时，保留原文件和用户凭据，按需补齐以下设置再运行更新命令：
 
-1. 将完整 `IMAGE` 字段改为 `IMAGE_TAG`（例如 `IMAGE_TAG=latest`，或保留指定版本）。
+1. 将完整 `IMAGE` 字段改为 `IMAGE_TAG=latest`；原来固定到历史标签的用户也需改为 `latest`。
 2. 追加 `SHARED_SKILLS_DIR=../shared-skills`，或填入所有用户共用的宿主机目录。该字段是必填项，不会静默选择未知的共享目录。
 3. 升级到 0.3.0 时追加 `SHARED_CODEX_DIR=../shared-codex`，先由管理员准备上述两个共享文件。保留已有 `runtime.env` 和其中其他凭据，不用新模板覆盖；旧 `CODEX_BOOTSTRAP_API_KEY` 不再被 Compose 传入，确认迁移后可删除这个旧字段。数据卷内原 Codex 配置与认证会按上述规则保留备份，不能用空模板覆盖现有凭据。
 
@@ -86,7 +86,11 @@ docker compose --env-file runtime.env pull
 docker compose --env-file runtime.env up -d
 ```
 
-每天北京时间 **09:23**，以及推送 main／手动触发时，检查上游 `ghcr.io/sapk/multica-agent-codex:latest`。上游 digest 和本仓库提交均未变化则跳过构建；有变化时先解析为固定 digest，让两个架构使用同一基础镜像。真实容器测试全部通过后才发布唯一构建标签和 `latest`，失败保留原 `latest`，不覆盖旧的 `0.1.0` 版本。补充的 lark-cli／playwright-cli 版本仍在 Dockerfile 中固定，由维护者更新。
+每天北京时间 **09:23**，以及推送 main／手动触发时，检查上游 `ghcr.io/sapk/multica-agent-codex:latest`。上游 digest 和本仓库提交均未变化则跳过构建；有变化时先解析为固定 digest，让两个架构使用同一基础镜像。amd64／arm64 在原生 runner 上分别构建并通过真实容器测试后，只按 digest 上传；确认上传的镜像配置 digest 与受测镜像相同，才合并更新 `latest`。构建、测试或该一致性检查失败不会更新 `latest`。构建编号仅保留在镜像标签元数据中，不产生公开 tag。补充的 lark-cli／playwright-cli 版本仍在 Dockerfile 中固定，由维护者更新。
+
+发布后自动清理历史版本，包括旧 `0.1.0`、构建／架构标签及无引用 manifest；保留 `latest` 和它递归依赖的全部 manifest。清理前匿名读取最新索引、确认两个架构，并完整校验所依赖的 manifest 和 blob；删除前再次检查 `latest` 未改变。依赖缺失、保留项仍有其他标签或清理权限不足时，工作流会明确失败，不绕过检查或删除受保护依赖。无变化的定时／手动运行也会重试清理。脚本 `scripts/cleanup_ghcr.py` 默认仅预览，Actions 使用本仓库的 `GITHUB_TOKEN` 和显式 `--apply` 执行，仅允许操作 `creekxi2026/agent-runtime` 包；该包须向本仓库授予 admin 权限，`packages: write` 本身不能绕过包的权限设置。
+
+发布与清理必须统一通过此工作流的同一个并发锁；维护期间不要在外部手动推送或删除该包。GitHub 不提供原子“检查 latest 后删除”接口，脚本不能保证与绕过工作流的并发写入安全共存。`latest` 切换后的网络核验或清理失败会保留已切换的新镜像并明确报错，不会自动回滚；修复后重跑工作流完成验收和清理。
 
 只自动更新镜像仓库，**不自动升级运行中的容器**。公开仓库使用标准 GitHub-hosted runners，GHCR 存储／流量按 GitHub 当前政策免费；不使用付费大型 runner。GitHub 定时任务可能延迟，公开仓库连续 60 天无活动会停用定时任务，需要在 Actions 页面重新启用。
 

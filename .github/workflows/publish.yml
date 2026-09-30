@@ -42,21 +42,25 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    env:
+      ARCH: ${{ matrix.arch }}
+      BASE_IMAGE: ${{ needs.check.outputs.base_image }}
+      BASE_DIGEST: ${{ needs.check.outputs.base_digest }}
+      BUILD_TAG: ${{ needs.check.outputs.build_tag }}
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - name: Build the resolved immutable upstream
-        env:
-          BASE_IMAGE: ${{ needs.check.outputs.base_image }}
-          BASE_DIGEST: ${{ needs.check.outputs.base_digest }}
-          BUILD_TAG: ${{ needs.check.outputs.build_tag }}
         run: |
-          docker build --pull --build-arg BASE_IMAGE="$BASE_IMAGE" \
-            --label "org.opencontainers.image.base.name=$BASE_IMAGE" \
-            --label "org.opencontainers.image.base.digest=$BASE_DIGEST" \
-            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
-            --label "org.opencontainers.image.version=$BUILD_TAG" \
-            -t agent-runtime:test .
+          args=(--platform "linux/$ARCH" --pull --provenance=false --sbom=false
+            --build-arg "BASE_IMAGE=$BASE_IMAGE"
+            --label "org.opencontainers.image.base.name=$BASE_IMAGE"
+            --label "org.opencontainers.image.base.digest=$BASE_DIGEST"
+            --label "org.opencontainers.image.revision=$GITHUB_SHA"
+            --label "org.opencontainers.image.version=$BUILD_TAG")
+          # Reuse these exact inputs and the same BuildKit cache after the smoke test.
+          printf '%s\0' "${args[@]}" > "$RUNNER_TEMP/build-args"
+          docker buildx build "${args[@]}" --load -t agent-runtime:test .
       - name: Test without user credentials
         env:
           IMAGE: agent-runtime:test
@@ -66,14 +70,35 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push tested architecture
-        env:
-          ARCH: ${{ matrix.arch }}
-          BUILD_TAG: ${{ needs.check.outputs.build_tag }}
+      - name: Push tested architecture by digest only
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}:$BUILD_TAG-$ARCH"
-          docker tag agent-runtime:test "$image"
-          docker push "$image"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          mapfile -d '' -t args < "$RUNNER_TEMP/build-args"
+          docker buildx build "${args[@]}" \
+            --metadata-file "$RUNNER_TEMP/push-metadata.json" \
+            --output "type=image,name=$image,push-by-digest=true,name-canonical=true,push=true" .
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          from pathlib import Path
+          temp = Path(os.environ['RUNNER_TEMP'])
+          metadata = json.loads((temp / 'push-metadata.json').read_text())
+          tested = subprocess.check_output(
+              ['docker', 'image', 'inspect', 'agent-runtime:test', '--format', '{{.Id}}'], text=True).strip()
+          if metadata['containerimage.config.digest'] != tested:
+              raise SystemExit('Pushed config differs from the smoke-tested image; refusing publication')
+          digest = metadata['containerimage.digest']
+          if not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
+              raise SystemExit('Invalid pushed manifest digest')
+          output = temp / 'digests'
+          output.mkdir()
+          (output / os.environ['ARCH']).write_text(digest + '\n')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
   publish:
     needs: [check, build]
     permissions:
@@ -81,19 +106,78 @@ jobs:
       packages: write
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
     steps:
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: digests-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish tested multi-platform image
-        env:
-          BUILD_TAG: ${{ needs.check.outputs.build_tag }}
+      - name: Publish only latest from both tested digests
+        id: publish
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          docker buildx imagetools create -t "$image:$BUILD_TAG" -t "$image:latest" \
-            "$image:$BUILD_TAG-amd64" "$image:$BUILD_TAG-arm64"
-          docker buildx imagetools inspect "$image:$BUILD_TAG"
-          printf 'Published `%s:%s` and `latest`\n' "$image" "$BUILD_TAG" >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          folder = Path(os.environ['RUNNER_TEMP']) / 'digests'
+          if {p.name for p in folder.iterdir()} != {'amd64', 'arm64'}:
+              raise SystemExit('Expected exactly two tested architecture artifacts')
+          digests = [(folder / arch).read_text().strip() for arch in ('amd64', 'arm64')]
+          if len(set(digests)) != 2 or not all(re.fullmatch(r'sha256:[0-9a-f]{64}', d) for d in digests):
+              raise SystemExit('Invalid or duplicate architecture digests')
+          PY
+          amd64=$(cat "$RUNNER_TEMP/digests/amd64")
+          arm64=$(cat "$RUNNER_TEMP/digests/arm64")
+          docker buildx imagetools create -t "$image:latest" "$image@$amd64" "$image@$arm64"
+          # Bind cleanup to the index just published, read without login credentials.
+          python3 - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from check_upstream import Registry, platforms
+          folder = Path(os.environ['RUNNER_TEMP']) / 'digests'
+          index, digest = Registry(os.environ['GITHUB_REPOSITORY'].lower()).get('manifests/latest')
+          entries = platforms(index)
+          if len(index['manifests']) != 2 or any(
+              entries[arch]['digest'] != (folder / arch).read_text().strip() for arch in entries
+          ):
+              raise SystemExit('Anonymous latest does not match the two tested digests')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'digest={digest}\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write(f'Published only `latest`: `{digest}`\n')
+          PY
+  cleanup:
+    needs: [check, build, publish]
+    # Also retry cleanup on unchanged scheduled/manual runs, never after a failed build/publish.
+    if: >-
+      ${{ always() && !cancelled() && needs.check.result == 'success' &&
+          (needs.publish.result == 'success' ||
+           (needs.check.outputs.changed == 'false' && needs.build.result == 'skipped' &&
+            needs.publish.result == 'skipped')) }}
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify anonymous latest and remove obsolete package versions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPECTED_LATEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          args=(--apply)
+          if [[ -n "$EXPECTED_LATEST" ]]; then
+            args+=(--expected-latest "$EXPECTED_LATEST")
+          fi
+          python3 scripts/cleanup_ghcr.py "${args[@]}"
