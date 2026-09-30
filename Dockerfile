@@ -5,6 +5,9 @@ USER root
 ARG LARK_CLI_VERSION=1.0.97
 ARG PLAYWRIGHT_CLI_VERSION=0.1.22
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bubblewrap \
+    && rm -rf /var/lib/apt/lists/*
 RUN npm install -g --prefix /opt/agent-tools --no-audit --no-fund \
       "@larksuite/cli@${LARK_CLI_VERSION}" "@playwright/cli@${PLAYWRIGHT_CLI_VERSION}" \
     && mkdir -p /data/.codex /data/.agents/skills /data/workspace \

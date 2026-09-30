@@ -1,6 +1,8 @@
 # Agent Runtime
 
-基于 [sapk/multica-docker-env](https://github.com/sapk/multica-docker-env) 的 Codex 镜像，仅补充 `lark-cli` 和面向 Agent 的 `playwright-cli`。启动时不安装软件。
+基于 [sapk/multica-docker-env](https://github.com/sapk/multica-docker-env) 的 Codex 镜像，补充 `lark-cli`、面向 Agent 的 `playwright-cli` 和系统版 `bubblewrap`（`/usr/bin/bwrap`）。启动时不安装软件。
+
+`bubblewrap` 在构建时通过系统软件源安装，两种架构的发布检查均确认其路径和版本。预装该工具不等于解除宿主机或容器的 namespace、seccomp、AppArmor 限制；仍需使用与 Linux 沙箱兼容的运行配置。
 
 ## 使用
 

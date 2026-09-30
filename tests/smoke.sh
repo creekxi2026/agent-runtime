@@ -55,6 +55,8 @@ docker run --rm --network none --read-only --tmpfs /data:uid=1000,gid=1000,mode=
   --security-opt no-new-privileges "$IMAGE" sh -ec '
   test "$(id -u)" = 1000
   node --version; codex --version; multica --version; lark-cli --version; playwright-cli --version
+  test "$(command -v bwrap)" = /usr/bin/bwrap
+  bwrap --version
   case "$(command -v codex)" in /data/*) exit 10 ;; esac
   case "$(command -v lark-cli)" in /data/*) exit 11 ;; esac
   test ! -S /tmp/podman.sock
