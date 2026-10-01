@@ -35,6 +35,7 @@ ENV HOME=/home/agent \
     MULTICA_CODEX_PATH=/opt/agent-upstream/.local/node-active/codex \
     PLAYWRIGHT_BROWSERS_PATH=/opt/agent-upstream/.cache/ms-playwright PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     GOROOT=/opt/agent-upstream/.local/go GOPATH=/home/agent/.local/share/go GOBIN=/home/agent/.local/bin \
+    GOTMPDIR=/home/agent/.cache/go-tmp \
     NPM_CONFIG_PREFIX=/home/agent/.local PNPM_HOME=/home/agent/.local/share/pnpm \
     UV_TOOL_DIR=/home/agent/.local/share/uv/tools UV_TOOL_BIN_DIR=/home/agent/.local/bin \
     UV_PYTHON_INSTALL_DIR=/home/agent/.local/share/uv/python \

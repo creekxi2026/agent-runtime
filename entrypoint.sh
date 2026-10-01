@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 umask 077
-mkdir -p "$CODEX_HOME" "$HOME/workspace" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.cache"
+mkdir -p "$CODEX_HOME" "$HOME/workspace" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.cache" "$HOME/.cache/go-tmp"
 if [ -n "${CODEX_SHARED_DIR:-}" ]; then
   # Preflight both files before moving any private config or credentials.
   for name in config.toml auth.json; do

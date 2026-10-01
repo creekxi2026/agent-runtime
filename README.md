@@ -14,7 +14,7 @@ Compose 将 `${DATA_DIR:-./data}` 绑定到 `/home/agent`。**升级时保持原
 
 - `npm install -g 包名`：prefix 为 `~/.local`，命令在 `~/.local/bin`。
 - `uv tool install 包名`：环境在 `~/.local/share/uv/tools`，命令在 `~/.local/bin`。
-- Go：`GOPATH=~/.local/share/go`、`GOBIN=~/.local/bin`；pnpm 用户目录在 `~/.local/share/pnpm`。
+- Go：`GOPATH=~/.local/share/go`、`GOBIN=~/.local/bin`、`GOTMPDIR=~/.cache/go-tmp`（避免依赖 `/tmp` 可执行）；pnpm 用户目录在 `~/.local/share/pnpm`。
 - 使用 UID/GID `1000:1000` 的 agent 身份安装。`apt` 等系统包仍通过镜像构建维护；不要向只读共享目录或预装工具目录安装用户软件。
 - 持久化以重建后复用同一宿主目录为前提；不保证跨 CPU 架构或系统版本复用已有原生扩展。
 
