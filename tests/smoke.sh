@@ -8,12 +8,15 @@ export SHARED_SKILLS_DIR="$shared/skills"
 export SHARED_CODEX_DIR="$shared/codex"
 reader_a=''
 reader_b=''
-compose() { p=$1; shift; docker compose -f compose.yaml -f tests/compose.yaml --env-file runtime.env.example -p "$p" "$@"; }
+compose() { p=$1; shift; DATA_DIR="$shared/$p-home" docker compose -f compose.yaml -f tests/compose.yaml --env-file runtime.env.example -p "$p" "$@"; }
 cleanup() {
   if [ -n "$reader_a" ]; then docker rm -f "$reader_a" >/dev/null 2>&1 || true; fi
   if [ -n "$reader_b" ]; then docker rm -f "$reader_b" >/dev/null 2>&1 || true; fi
   compose "$project-a" down --volumes --remove-orphans >/dev/null 2>&1 || true
   compose "$project-b" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  docker run --rm --network none --user 0:0 --entrypoint /bin/sh \
+    --mount "type=bind,src=$shared,dst=/fixture" "$IMAGE" -ec \
+    'rm -rf "$1" "$2"' cleanup "/fixture/$project-a-home" "/fixture/$project-b-home" >/dev/null
   rm -rf "$shared"
 }
 trap cleanup EXIT INT TERM
@@ -48,19 +51,24 @@ write_codex_fixture before
 chmod 777 "$SHARED_SKILLS_DIR/runtime-shared-smoke"
 chmod 666 "$SHARED_SKILLS_DIR/runtime-shared-smoke/SKILL.md"
 sh -n entrypoint.sh
+sh -n bootstrap.sh
+sh -n agent-tools-path.sh
 python3 tests/test_entrypoint.py
 docker compose --env-file runtime.env.example config --quiet
 # With networking disabled, startup must not download or install anything.
-docker run --rm --network none --read-only --tmpfs /data:uid=1000,gid=1000,mode=700 --tmpfs /tmp --cap-drop ALL \
+docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000,mode=700 --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges "$IMAGE" sh -ec '
   test "$(id -u)" = 1000
   node --version; codex --version; multica --version; lark-cli --version; playwright-cli --version
   miniprogram-ci --version
   miniprogram-ci --help >/dev/null
+  go version; uv --version; pnpm --version
+  timeout 20 mcp-proxy --help >/dev/null
+  timeout 20 specify --version
   test "$(command -v bwrap)" = /usr/bin/bwrap
   bwrap --version
-  case "$(command -v codex)" in /data/*) exit 10 ;; esac
-  case "$(command -v lark-cli)" in /data/*) exit 11 ;; esac
+  case "$(command -v codex)" in /home/agent/*) exit 10 ;; esac
+  case "$(command -v lark-cli)" in /home/agent/*) exit 11 ;; esac
   test ! -S /tmp/podman.sock
   test ! -S /var/run/docker.sock
   if touch /rootfs-write-probe 2>/dev/null; then exit 12; fi
@@ -68,21 +76,30 @@ docker run --rm --network none --read-only --tmpfs /data:uid=1000,gid=1000,mode=
 # Exercise terminal/agent shell modes, not only Docker's inherited ENV PATH.
 for mode in -lc -ic -ilc; do
   printf 'Checking tool PATH with bash %s\n' "$mode"
-  docker run --rm --network none --read-only --tmpfs /data:uid=1000,gid=1000,mode=700 --tmpfs /tmp \
+  docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000,mode=700 --tmpfs /tmp \
     --cap-drop ALL --security-opt no-new-privileges --entrypoint /bin/bash "$IMAGE" "$mode" '
     set -eu
     mkdir -p "$CODEX_HOME"
     for tool in node codex lark-cli playwright-cli miniprogram-ci; do command -v "$tool"; done
     case ":$PATH:" in *:/opt/agent-tools/bin:*) ;; *) exit 14 ;; esac
-    case ":$PATH:" in *:/home/agent/.local/node-active:*) ;; *) exit 15 ;; esac
+    case ":$PATH:" in *:/opt/agent-upstream/.local/node-active:*) ;; *) exit 15 ;; esac
     lark-cli --help >/dev/null
     miniprogram-ci --version
     miniprogram-ci --help >/dev/null
   '
 done
-compose "$project-a" run --rm runtime sh -ec 'printf a > /data/workspace/tenant-a'
-compose "$project-b" run --rm runtime sh -ec 'test ! -e /data/workspace/tenant-a; printf b > /data/workspace/tenant-b'
-compose "$project-a" run --rm runtime sh -ec 'test -f /data/workspace/tenant-a; test ! -e /data/workspace/tenant-b'
+compose "$project-a" run --rm runtime sh -ec 'printf a > /home/agent/workspace/tenant-a'
+compose "$project-b" run --rm runtime sh -ec 'test ! -e /home/agent/workspace/tenant-a; printf b > /home/agent/workspace/tenant-b'
+compose "$project-a" run --rm runtime sh -ec 'test -f /home/agent/workspace/tenant-a; test ! -e /home/agent/workspace/tenant-b'
+# A local npm fixture exercises default user installation without a registry/key.
+compose "$project-a" run --rm -T runtime python3 - install < tests/home_fixture.py
+compose "$project-a" run --rm -T runtime python3 - check < tests/home_fixture.py
+compose "$project-b" run --rm -T runtime python3 - isolated < tests/home_fixture.py
+# Launch bundled browsers offline against a genuinely empty mounted HOME.
+docker run --rm -i --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000,mode=700 \
+  --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+  --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  "$IMAGE" node < tests/browser_relocation_probe.cjs
 # Keep both user containers alive while one host-side update reaches both.
 reader_a=$(compose "$project-a" run --no-deps -d runtime sleep 300)
 reader_b=$(compose "$project-b" run --no-deps -d runtime sleep 300)
@@ -96,7 +113,7 @@ for reader in "$reader_a" "$reader_b"; do
 done
 # No credential: a real daemon must refuse startup, never fabricate a login.
 log=$(mktemp)
-if timeout 30 docker run --rm --network none --read-only --tmpfs /data:uid=1000,gid=1000,mode=700 --tmpfs /tmp --cap-drop ALL "$IMAGE" >"$log" 2>&1; then
+if timeout 30 docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000,mode=700 --tmpfs /tmp --cap-drop ALL "$IMAGE" >"$log" 2>&1; then
   cat "$log"; rm "$log"; exit 13
 else
   status=$?
@@ -104,4 +121,4 @@ else
   grep -qi 'not authenticated' "$log"
 fi
 rm "$log"
-printf '%s\n' 'PASS: offline startup, real tool binaries, no Podman/socket, non-root/read-only, per-user persistence, real Codex shared-skills/config parsing and API-key account type (not authentication), atomic shared-file update for two users, read-only shared mounts, missing-auth rejection.'
+printf '%s\n' 'PASS: offline startup, real relocated tools/browsers, empty HOME mounts and persistent user installs, no Podman/socket, non-root/read-only, per-user persistence, real Codex shared-skills/config parsing and API-key account type (not authentication), atomic shared-file update for two users, read-only shared mounts, missing-auth rejection.'

@@ -1,11 +1,13 @@
-# 启动：docker compose --env-file runtime.env up -d
-# 日志：docker compose --env-file runtime.env logs -f
-# 停止：docker compose --env-file runtime.env down（加 -v 删除该用户数据）
-name: ${COMPOSE_PROJECT_NAME:?请在 runtime.env 填写唯一实例名}
+# 启动：docker compose up -d
+# 先替换此 Compose，再拉取最新镜像并重建；DATA_DIR 保持原宿主机目录。
+name: ${COMPOSE_PROJECT_NAME:?请在 .env 填写唯一实例名}
 services:
   runtime:
+    init: false
     image: ghcr.io/creekxi2026/agent-runtime:${IMAGE_TAG:-latest}
-    user: "1000:1000"
+    # 仅入口初始化使用 root；随后降为 1000:1000，并清除全部 capabilities。
+    user: "0:0"
+    working_dir: /home/agent
     environment:
       MULTICA_SERVER_URL: ${MULTICA_SERVER_URL:-}
       MULTICA_APP_URL: ${MULTICA_APP_URL:-}
@@ -19,26 +21,36 @@ services:
       MULTICA_AGENT_RUNTIME_NAME: ${COMPOSE_PROJECT_NAME}
       MULTICA_DAEMON_MAX_CONCURRENT_TASKS: ${MAX_CONCURRENT_TASKS:-1}
     volumes:
-      - data:/data
       - type: bind
-        source: ${SHARED_CODEX_DIR:?请在 runtime.env 设置共享 Codex 专用配置目录}
+        source: ${DATA_DIR:-./data}
+        target: /home/agent
+        read_only: false
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ${SHARED_CODEX_DIR:?请在 .env 设置共享 Codex 专用配置目录}
         target: /shared/codex
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${SHARED_SKILLS_DIR:?请在 runtime.env 设置共享 skills 目录}
-        target: /data/.agents/skills
+        source: ${SHARED_SKILLS_DIR:?请在 .env 设置共享 skills 目录}
+        target: /home/agent/.agents/skills
         read_only: true
         bind:
           create_host_path: true
-    read_only: true
+    # 允许 agent 更新它拥有的工具目录；两个共享挂载仍只读。
+    read_only: false
     tmpfs: [/tmp]
     cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, SETPCAP]
+    # 放宽本容器的 seccomp/AppArmor 过滤，以兼容 Codex 的内层 Linux 沙箱。
+    # 不启用 privileged，不增加 SYS_ADMIN，不修改宿主机全局设置。
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=unconfined
+      - apparmor=unconfined
     mem_limit: ${MEMORY_LIMIT:-4g}
     cpus: ${CPU_LIMIT:-2}
     pids_limit: 512
-    restart: "no"
-volumes:
-  data:
+    restart: unless-stopped

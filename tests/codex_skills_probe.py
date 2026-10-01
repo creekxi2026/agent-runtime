@@ -10,7 +10,7 @@ import sys
 import tempfile
 import threading
 
-skill_dir = Path("/data/.agents/skills/runtime-shared-smoke")
+skill_dir = Path("/home/agent/.agents/skills/runtime-shared-smoke")
 try:
     (skill_dir / "forbidden-write").write_text("must not succeed")
 except OSError as error:
@@ -70,7 +70,7 @@ with tempfile.TemporaryFile(mode="w+") as errors:
         reply(1)
         send({"method": "initialized", "params": {}})
         send({"id": 2, "method": "skills/list", "params": {
-            "cwds": ["/data/workspace"], "forceReload": True,
+            "cwds": ["/home/agent/workspace"], "forceReload": True,
         }})
         result = reply(2)
         found = [skill for entry in result["data"] for skill in entry["skills"]
@@ -82,7 +82,7 @@ with tempfile.TemporaryFile(mode="w+") as errors:
         print("PASS real Codex discovery, read-only shared skill:", sys.argv[1])
         if shared_codex:
             send({"id": 3, "method": "config/read", "params": {
-                "includeLayers": False, "cwd": "/data/workspace",
+                "includeLayers": False, "cwd": "/home/agent/workspace",
             }})
             config_result = reply(3)
             assert config_result["config"]["model"] == "runtime-fixture-" + sys.argv[1], "Stale shared model config"

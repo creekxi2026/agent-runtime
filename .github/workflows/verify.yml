@@ -1,0 +1,44 @@
+name: Verify image without publishing
+on:
+  push:
+    branches: ['verify/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: agent-runtime-verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      base_image: ${{ steps.base.outputs.base_image }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - id: base
+        run: python3 scripts/check_upstream.py
+  verify:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      ARCH: ${{ matrix.arch }}
+      BASE_IMAGE: ${{ needs.resolve.outputs.base_image }}
+      IMAGE: agent-runtime:test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build with immutable base; never push
+        run: docker buildx build --platform "linux/$ARCH" --pull --provenance=false --sbom=false --build-arg "BASE_IMAGE=$BASE_IMAGE" --load -t "$IMAGE" .
+      - name: Exercise fresh home and tools without real credentials
+        run: sh tests/smoke.sh

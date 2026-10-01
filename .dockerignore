@@ -2,3 +2,7 @@
 !Dockerfile
 !entrypoint.sh
 !agent-tools-path.sh
+!bootstrap.sh
+!scripts/
+scripts/*
+!scripts/relocate_upstream.py
