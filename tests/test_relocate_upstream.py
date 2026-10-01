@@ -34,6 +34,27 @@ class RelocationTests(unittest.TestCase):
     def run_relocation(self, **kwargs):
         relocation.relocate(self.source, self.target, **self.owners, **kwargs)
 
+    def test_overlay_exdev_copy_preserves_internal_hardlinks_and_symlinks(self):
+        import errno
+        first = self.put("bin/one", "#!/bin/sh\n# " + str(self.source) + "/payload\n", 0o755)
+        os.link(first, self.source / "bin/two")
+        (self.source / "alias").symlink_to(first)
+        with patch.object(relocation.os, "rename", side_effect=OSError(errno.EXDEV, "overlay fixture")):
+            self.run_relocation()
+        self.assertEqual(list(self.source.iterdir()), [])
+        self.assertEqual((self.target / "bin/one").stat().st_ino, (self.target / "bin/two").stat().st_ino)
+        self.assertIn(str(self.target), (self.target / "bin/one").read_text())
+        self.assertEqual(os.readlink(self.target / "alias"), str(self.target / "bin/one"))
+
+    def test_failed_overlay_copy_does_not_remove_source(self):
+        import errno
+        source = self.put("payload", "preserve me")
+        with patch.object(relocation.os, "rename", side_effect=OSError(errno.EXDEV, "overlay fixture")), \
+                patch.object(relocation.shutil, "copy2", side_effect=OSError("copy failed")):
+            with self.assertRaises(OSError):
+                self.run_relocation()
+        self.assertEqual(source.read_text(), "preserve me")
+
     def test_move_preserves_unknown_cache_and_recreates_empty_home(self):
         self.put(".mystery/cache/payload", b"unchanged\x00bytes")
         self.run_relocation()

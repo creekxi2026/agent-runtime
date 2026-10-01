@@ -7,7 +7,9 @@ created. Failure after rename is not rolled back: discard the build stage.
 """
 import argparse
 import codecs
+import errno
 import hashlib
+import shutil
 import os
 from pathlib import Path
 import re
@@ -118,7 +120,29 @@ def relocate(source="/home/agent", destination="/opt/agent-upstream", *,
     pattern = re.compile(r"(?:(?<![\w./-])|(?<=:-))(file://)?" + re.escape(old)
                          + r"(?=$|[/\s\"'`:;,\)\]}])")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    os.rename(source, destination)  # Fail on EXDEV rather than losing hardlink structure.
+    try:
+        os.rename(source, destination)
+    except OSError as error:
+        if error.errno != errno.EXDEV:
+            raise
+        # OverlayFS lower-layer directories can reject rename even on one
+        # apparent filesystem. Preserve internal hardlinks as well as symlinks;
+        # the source is removed only after a complete copy in this build stage.
+        copied = {}
+
+        def copy_file(src, dst):
+            info = os.stat(src, follow_symlinks=False)
+            key = (info.st_dev, info.st_ino)
+            if info.st_nlink > 1 and key in copied:
+                os.link(copied[key], dst)
+            else:
+                shutil.copy2(src, dst)
+                if info.st_nlink > 1:
+                    copied[key] = dst
+            return dst
+
+        shutil.copytree(source, destination, symlinks=True, copy_function=copy_file)
+        shutil.rmtree(source)
     for path in _walk(destination):
         mode = path.lstat().st_mode
         if stat.S_ISLNK(mode):
