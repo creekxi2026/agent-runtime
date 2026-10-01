@@ -104,13 +104,14 @@ docker run --rm -i --network none --read-only --tmpfs /home/agent:uid=1000,gid=1
 reader_a=$(compose "$project-a" run --no-deps -d runtime sleep 300)
 reader_b=$(compose "$project-b" run --no-deps -d runtime sleep 300)
 for reader in "$reader_a" "$reader_b"; do
-  timeout 90 docker exec -i "$reader" python3 - before < tests/codex_skills_probe.py
+  timeout 90 docker exec --user 1000:1000 -i "$reader" python3 - before < tests/codex_skills_probe.py
 done
 printf '%s\n' '---' 'name: runtime-shared-smoke' 'description: Shared smoke revision-after' '---' '# Shared smoke fixture' > "$SHARED_SKILLS_DIR/runtime-shared-smoke/SKILL.md"
 write_codex_fixture after
 for reader in "$reader_a" "$reader_b"; do
-  timeout 90 docker exec -i "$reader" python3 - after < tests/codex_skills_probe.py
+  timeout 90 docker exec --user 1000:1000 -i "$reader" python3 - after < tests/codex_skills_probe.py
 done
+compose "$project-a" run --rm -T runtime python3 - check < tests/home_fixture.py
 # No credential: a real daemon must refuse startup, never fabricate a login.
 log=$(mktemp)
 if timeout 30 docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000,mode=700 --tmpfs /tmp --cap-drop ALL "$IMAGE" >"$log" 2>&1; then

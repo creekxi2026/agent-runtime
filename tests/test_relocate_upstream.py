@@ -164,6 +164,12 @@ class RelocationTests(unittest.TestCase):
         self.assertLessEqual(sum(reads), 16384)
         self.assertEqual((self.target / "chromium").stat().st_size, 64 * 1024 * 1024)
 
+    def test_utf8_shell_with_literal_ansi_escape_is_not_binary(self):
+        original = "#!/bin/sh\nprintf '\x1b[0m'\n# " + str(self.source) + "/tool\n"
+        self.put("common.sh", original)
+        self.run_relocation()
+        self.assertEqual((self.target / "common.sh").read_text(), original.replace(str(self.source), str(self.target)))
+
     def test_runtime_file_with_unsupported_encoding_fails(self):
         self.put("venv/pyvenv.cfg", (str(self.source) + "/python").encode("utf-16"))
         with self.assertRaisesRegex(ValueError, "text|encoding|binary"):

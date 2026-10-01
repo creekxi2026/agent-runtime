@@ -37,4 +37,10 @@ if mode in ("install", "check"):
 else:
     assert mode == "isolated"
     assert not (home / ".local/bin/runtime-home-probe").exists()
+# Shared mounts belong to the administrator; private state must not be root-owned.
+for base, directories, files in os.walk(home, followlinks=False):
+    directories[:] = [name for name in directories if Path(base, name) != home / ".agents/skills"]
+    for name in files + directories:
+        path = Path(base, name)
+        assert path.lstat().st_uid == 1000, "Unexpected owner in private HOME: " + str(path)
 print("PASS unified passwd/HOME, dropped capabilities, immutable tools and user installation:", mode)

@@ -45,7 +45,7 @@ def _text(path, pattern, source, destination, limit, validate=False):
         data = stream.read(8192)
         known = known or data.startswith(b"#!")
         try:
-            if re.search(rb"[\x00-\x08\x0b\x0e-\x1f\x7f]", data):
+            if re.search(rb"[\x00-\x08\x0b\x0e-\x1a\x1c-\x1f\x7f]", data):
                 raise UnicodeError("binary control bytes")
             codecs.getincrementaldecoder("utf-8")().decode(data, final=False)
         except UnicodeError:
@@ -64,7 +64,7 @@ def _text(path, pattern, source, destination, limit, validate=False):
         data += stream.read(limit + 1 - len(data))
     try:
         text = data.decode("utf-8")
-        if re.search(r"[\x00-\x08\x0b\x0e-\x1f\x7f]", text):
+        if re.search(r"[\x00-\x08\x0b\x0e-\x1a\x1c-\x1f\x7f]", text):
             raise UnicodeError("binary control bytes")
     except UnicodeError:
         if known:

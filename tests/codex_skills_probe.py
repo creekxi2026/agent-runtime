@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 
+assert os.getuid() == 1000 and os.getgid() == 1000, "Probe must use the real agent identity"
 skill_dir = Path("/home/agent/.agents/skills/runtime-shared-smoke")
 try:
     (skill_dir / "forbidden-write").write_text("must not succeed")
