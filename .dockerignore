@@ -1,3 +1,4 @@
 *
 !Dockerfile
 !entrypoint.sh
+!agent-tools-path.sh

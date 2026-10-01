@@ -1,8 +1,14 @@
 # Agent Runtime
 
-基于 [sapk/multica-docker-env](https://github.com/sapk/multica-docker-env) 的 Codex 镜像，补充 `lark-cli`、面向 Agent 的 `playwright-cli` 和系统版 `bubblewrap`（`/usr/bin/bwrap`）。启动时不安装软件。
+基于 [sapk/multica-docker-env](https://github.com/sapk/multica-docker-env) 的 Codex 镜像，补充 `lark-cli`、面向 Agent 的 `playwright-cli`、微信小程序 `miniprogram-ci` 和系统版 `bubblewrap`（`/usr/bin/bwrap`）。启动时不安装软件。
 
 `bubblewrap` 在构建时通过系统软件源安装，两种架构的发布检查均确认其路径和版本。预装该工具不等于解除宿主机或容器的 namespace、seccomp、AppArmor 限制；仍需使用与 Linux 沙箱兼容的运行配置。
+
+## 命令 PATH 与小程序 CLI
+
+新增工具安装在 `/opt/agent-tools/bin`。镜像同时通过 `ENV PATH`、`/etc/profile.d/agent-tools.sh` 和上游 `BASH_ENV` 保持工具及 Node 路径，避免登录 shell 重置 PATH 后只能用绝对路径运行。发布检查覆盖普通进程以及 `bash -lc`、`bash -ic`、`bash -ilc`。
+
+`miniprogram-ci` 构建版本固定为当前选定的 npm 最新版 `2.1.31`，命令为 `miniprogram-ci`，不是 Mac 微信开发者工具的 GUI/CLI。使用 `miniprogram-ci --help` 查看参数；预览、上传仍需项目 AppID、上传私钥及微信侧相应配置。镜像不含这些凭据，发布检查只验证离线 CLI 可用，不执行真实上传。
 
 ## 使用
 

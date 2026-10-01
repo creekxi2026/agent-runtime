@@ -4,15 +4,20 @@ FROM ${BASE_IMAGE}
 USER root
 ARG LARK_CLI_VERSION=1.0.97
 ARG PLAYWRIGHT_CLI_VERSION=0.1.22
+ARG MINIPROGRAM_CI_VERSION=2.1.31
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bubblewrap \
     && rm -rf /var/lib/apt/lists/*
 RUN npm install -g --prefix /opt/agent-tools --no-audit --no-fund \
       "@larksuite/cli@${LARK_CLI_VERSION}" "@playwright/cli@${PLAYWRIGHT_CLI_VERSION}" \
+      "miniprogram-ci@${MINIPROGRAM_CI_VERSION}" \
     && mkdir -p /data/.codex /data/.agents/skills /data/workspace \
     && chown -R 1000:1000 /data \
     && rm -rf /root/.npm
+COPY --chmod=644 agent-tools-path.sh /etc/profile.d/agent-tools.sh
+# Login shells reset PATH; non-interactive Bash also loads the upstream BASH_ENV.
+RUN printf '\n. /etc/profile.d/agent-tools.sh\n' >> "${BASH_ENV}"
 COPY --chmod=755 entrypoint.sh /usr/local/bin/agent-entrypoint
 ENV PATH="/opt/agent-tools/bin:${PATH}" \
     HOME=/data CODEX_HOME=/data/.codex LARKSUITE_CLI_CONFIG_DIR=/data/.lark-cli \

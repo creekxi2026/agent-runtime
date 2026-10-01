@@ -55,6 +55,8 @@ docker run --rm --network none --read-only --tmpfs /data:uid=1000,gid=1000,mode=
   --security-opt no-new-privileges "$IMAGE" sh -ec '
   test "$(id -u)" = 1000
   node --version; codex --version; multica --version; lark-cli --version; playwright-cli --version
+  miniprogram-ci --version
+  miniprogram-ci --help >/dev/null
   test "$(command -v bwrap)" = /usr/bin/bwrap
   bwrap --version
   case "$(command -v codex)" in /data/*) exit 10 ;; esac
@@ -63,6 +65,21 @@ docker run --rm --network none --read-only --tmpfs /data:uid=1000,gid=1000,mode=
   test ! -S /var/run/docker.sock
   if touch /rootfs-write-probe 2>/dev/null; then exit 12; fi
 '
+# Exercise terminal/agent shell modes, not only Docker's inherited ENV PATH.
+for mode in -lc -ic -ilc; do
+  printf 'Checking tool PATH with bash %s\n' "$mode"
+  docker run --rm --network none --read-only --tmpfs /data:uid=1000,gid=1000,mode=700 --tmpfs /tmp \
+    --cap-drop ALL --security-opt no-new-privileges --entrypoint /bin/bash "$IMAGE" "$mode" '
+    set -eu
+    mkdir -p "$CODEX_HOME"
+    for tool in node codex lark-cli playwright-cli miniprogram-ci; do command -v "$tool"; done
+    case ":$PATH:" in *:/opt/agent-tools/bin:*) ;; *) exit 14 ;; esac
+    case ":$PATH:" in *:/home/agent/.local/node-active:*) ;; *) exit 15 ;; esac
+    lark-cli --help >/dev/null
+    miniprogram-ci --version
+    miniprogram-ci --help >/dev/null
+  '
+done
 compose "$project-a" run --rm runtime sh -ec 'printf a > /data/workspace/tenant-a'
 compose "$project-b" run --rm runtime sh -ec 'test ! -e /data/workspace/tenant-a; printf b > /data/workspace/tenant-b'
 compose "$project-a" run --rm runtime sh -ec 'test -f /data/workspace/tenant-a; test ! -e /data/workspace/tenant-b'
