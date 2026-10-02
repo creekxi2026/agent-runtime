@@ -69,7 +69,8 @@ docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000
   done
   test ! -d /opt/agent-upstream
   test ! -d /ms-playwright
-  test ! -d /home/agent/.cache/ms-playwright
+  # CLI update metadata is not an installed browser.
+  node -e "const p=require(\"playwright\"),fs=require(\"node:fs\"); for(const b of [p.chromium,p.firefox,p.webkit]) if(fs.existsSync(b.executablePath())) process.exit(1)"
   python3 -m json.tool /usr/share/agent-runtime/dependencies.json >/dev/null
   test "$(command -v bwrap)" = /usr/bin/bwrap
   bwrap --version

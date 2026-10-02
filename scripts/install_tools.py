@@ -119,7 +119,15 @@ def npm_plan(manifest):
     # Forcing a CLI's alpha/internal Playwright onto a different stable API can
     # break real operations even when --version and --help still pass.
     return {"name": "agent-runtime-tools", "version": "1.0.0", "private": True,
-            "dependencies": {name: item["version"] for name, item in sorted(manifest["npm"].items()) if name != "npm"}}
+            "dependencies": {name: item["version"] for name, item in sorted(manifest["npm"].items()) if name != "npm"},
+            # npm 12 requires explicit approvals. Native CLI/bootstrap scripts
+            # are permitted only for these packages, not globally for users.
+            "allowScripts": {
+                **{name + "@" + item["version"]: True for name, item in manifest["npm"].items()
+                   if name in {"pnpm", "@larksuite/cli"}},
+                "@swc/core": True, "@parcel/watcher": True,
+                "core-js": False, "less": False, "protobufjs": False,
+            }}
 
 
 def check_version(command, expected):

@@ -149,6 +149,9 @@ class InstallerTests(unittest.TestCase):
         plan = self.i.npm_plan(manifest)
         self.assertEqual(plan["dependencies"]["playwright"], "1.63.0")
         self.assertNotIn("overrides", plan)
+        self.assertTrue(plan["allowScripts"]["pnpm@12.8.1"])
+        self.assertNotIn("*", plan["allowScripts"])
+        self.assertFalse(plan["allowScripts"]["core-js"])
         self.assertEqual(plan["dependencies"]["pnpm"], "12.8.1")
 
     def test_version_check_rejects_wrong_executable_version(self):
