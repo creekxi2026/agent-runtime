@@ -129,11 +129,20 @@ amd64／arm64 在原生 runner 上分别构建并通过真实容器测试后，�
 - 文件卷分离不替代 Multica 服务端鉴权或远程浏览器权限。不要给多个用户共享管理员 Token；不将此模板宣称为完整恶意多租户安全边界。
 - 基础系统和工具从官方源获取；第三方组件遵循各自许可证。
 
+## 更新下载与分层
+
+系统软件包与低频开发工具、Codex、Multica 使用独立的构建输入。Codex 和 Multica 从独立构建阶段通过 COPY --link 进入各自镜像层，完整版本清单只在末尾写入小型元数据层。单独升级其中一个 CLI 不应改变系统、SDK 和另一个 CLI 的压缩层摘要。
+
+CI 使用按架构隔离的 GitHub Actions BuildKit v2 缓存（mode=max），跨运行保存核心工具及中间阶段。缓存不在 GHCR 增加标签，镜像仍只保留 latest。Docker 在宿主保留旧层时只拉取新增 blob，容器仍需重建。缓存可能因配额或长期未使用被驱逐；基础系统/核心工具更新、缓存丢失或 NAS 清理旧层时，下载量仍可能增加。本次从旧的大层迁移到新分层也会有一次较大的下载，不能把它当作后续单 CLI 更新的下载量。
+
+验证分支会用官方旧版 Codex/Multica 分别与当前版本作对照，创建全新的 BuildKit daemon 导入持久缓存，比较真实 OCI 压缩层摘要，要求只有目标 CLI 和版本元数据变化。对照旧版仅在临时 CI 构建中存在，不发布、不保留额外镜像标签。
+
 ## 维护者本地构建
 
 ```bash
 python3 scripts/resolve_tools.py --output runtime-deps.json
 BASE_IMAGE=$(python3 -c 'import json; print(json.load(open("runtime-deps.json"))["base_image"])')
+python3 scripts/split_dependencies.py --manifest runtime-deps.json --output .build-inputs
 docker build --build-arg "BASE_IMAGE=$BASE_IMAGE" -t agent-runtime:test .
 IMAGE=agent-runtime:test sh tests/smoke.sh
 IMAGE=agent-runtime:test bash tests/remote-browser.sh

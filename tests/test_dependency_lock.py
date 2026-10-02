@@ -29,7 +29,7 @@ class DependencyLockTests(unittest.TestCase):
             text = (root / '.github/workflows' / name).read_text()
             self.assertIn('name: runtime-deps', text)
             self.assertIn('DEPENDENCY_DIGEST:', text)
-            self.assertLess(text.index('run: python3 scripts/verify_dependency_lock.py'), text.index('run: docker buildx build') if name == 'verify.yml' else text.index('args=(--platform'))
+            self.assertLess(text.index('run: python3 scripts/verify_dependency_lock.py'), text.index('uses: docker/build-push-action@'))
             self.assertIn('tests/remote-browser.sh', text)
 
 

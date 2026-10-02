@@ -2,7 +2,7 @@
 # CI resolves this once, shares runtime-deps.json across both architectures, and
 # passes its base_image as BASE_IMAGE. The installer rejects a mismatched FROM.
 ARG BASE_IMAGE=debian:stable-slim@sha256:5bc3287b25407c965a30f38e32603dc253a3869e1b12a21ac09bfc27fd8b13ce
-FROM ${BASE_IMAGE}
+FROM ${BASE_IMAGE} AS core
 ARG BASE_IMAGE
 ARG TARGETARCH
 # Supply the UTC build day to refresh signed Debian security packages daily.
@@ -19,14 +19,14 @@ RUN test -n "${APT_REFRESH}" \
 
 # Only explicitly enumerated runtime inputs enter this public image. No project
 # source, user HOME, credentials or full third-party root filesystem is copied.
-COPY runtime-deps.json /usr/share/agent-runtime/dependencies.json
-COPY scripts/install_tools.py /tmp/install_tools.py
-RUN PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install_tools.py \
-      --manifest /usr/share/agent-runtime/dependencies.json \
+RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \
+    --mount=type=bind,source=.build-inputs/core.json,target=/tmp/core.json \
+    PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install_tools.py \
+      --component core --manifest /tmp/core.json \
       --arch "${TARGETARCH}" --base-image "${BASE_IMAGE}" \
-    && rm -f /tmp/install_tools.py \
     && rm -rf /root/.npm /root/.cache /tmp/agent-tools-* \
     && chmod -R go-w /opt/node /opt/go /opt/agent-tools /usr/local/bin \
+    && ln -s /opt/codex/bin/codex /opt/agent-tools/bin/codex \
     && groupadd --gid 1000 agent \
     && useradd --uid 1000 --gid 1000 --home-dir /home/agent --create-home --shell /bin/bash agent \
     && mkdir -p /home/agent/.codex /home/agent/.agents /home/agent/.local/bin \
@@ -36,6 +36,31 @@ RUN PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install_tools.py \
 COPY --chmod=644 agent-tools-path.sh /etc/profile.d/agent-tools.sh
 COPY --chmod=755 bootstrap.sh /usr/local/bin/agent-bootstrap
 COPY --chmod=755 entrypoint.sh /usr/local/bin/agent-entrypoint
+
+# CLI stages inherit the core toolchains, not one another's inputs or outputs.
+# Build-only scripts, input locks and npm caches never enter the final image.
+FROM core AS codex-tool
+RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \
+    --mount=type=bind,source=.build-inputs/codex.json,target=/tmp/codex.json \
+    PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install_tools.py \
+      --component codex --manifest /tmp/codex.json --arch "${TARGETARCH}" \
+    && chmod -R go-w /opt/codex
+
+FROM core AS multica-tool
+RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \
+    --mount=type=bind,source=.build-inputs/multica.json,target=/tmp/multica.json \
+    PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install_tools.py \
+      --component multica --manifest /tmp/multica.json --arch "${TARGETARCH}" \
+    && chmod -R go-w /opt/multica
+
+FROM core AS runtime
+# --link makes each copied CLI blob independent of the preceding CLI layer.
+# Both destinations are real paths (never a symlink traversal), and neither
+# COPY duplicates the core filesystem or any unrelated /usr/local/bin tools.
+COPY --link --from=codex-tool /opt/codex /opt/codex
+COPY --link --from=multica-tool /opt/multica/bin/multica /usr/local/bin/multica
+# The complete lock is metadata only; it cannot invalidate tool installation.
+COPY runtime-deps.json /usr/share/agent-runtime/dependencies.json
 
 ENV HOME=/home/agent \
     LANG=C.UTF-8 \

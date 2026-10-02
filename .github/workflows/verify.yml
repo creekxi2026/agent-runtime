@@ -54,9 +54,34 @@ jobs:
           path: .
       - name: Verify resolved dependency artifact
         run: python3 scripts/verify_dependency_lock.py
+      - name: Split independent component inputs
+        run: python3 scripts/split_dependencies.py --manifest runtime-deps.json --output .build-inputs
       - name: Build with immutable base; never push
-        run: docker buildx build --platform "linux/$ARCH" --pull --provenance=false --sbom=false --build-arg "BASE_IMAGE=$BASE_IMAGE" --load -t "$IMAGE" .
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          pull: true
+          provenance: false
+          sbom: false
+          load: true
+          tags: agent-runtime:test
+          build-args: BASE_IMAGE=${{ env.BASE_IMAGE }}
+          cache-from: type=gha,version=2,scope=runtime-${{ matrix.arch }}
+          cache-to: type=gha,version=2,scope=runtime-${{ matrix.arch }},mode=max
       - name: Exercise fresh home and tools without real credentials
         run: sh tests/smoke.sh
       - name: Verify real remote browser client
         run: bash tests/remote-browser.sh
+      - name: Prove independent CLI layers using a fresh builder
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tests/layer_delta_probe.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: layer-delta-${{ matrix.arch }}
+          path: layer-delta.json
+          if-no-files-found: error
+          retention-days: 7

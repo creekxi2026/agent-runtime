@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Build-time installation only, from the shared official dependency manifest.
+"""Build-time installation from the official lock or isolated component shards.
 
 Run as root in a fresh Debian image. Never resolve latest in this installer.
 The optional --verify-only mode performs executable/package version checks.
+Use --component core/codex/multica with the corresponding split input; the
+default all mode retains the original full-manifest installation interface.
 """
 import argparse
 import base64
@@ -22,6 +24,40 @@ import urllib.request
 PREFIX = Path("/opt/agent-tools")
 NODE = Path("/opt/node")
 GO = Path("/opt/go")
+CODEX = Path("/opt/codex")
+MULTICA = Path("/opt/multica/bin")
+
+
+def validate_component(manifest, component):
+    """Fail closed if a stage receives another component's lock or extra tools."""
+    if manifest.get("schema_version") != 1:
+        raise ValueError("Unsupported manifest schema")
+    if component == "all":
+        if "component" in manifest:
+            raise ValueError("Full installation requires the full manifest")
+        return
+    schemas = {
+        "core": ({"node", "npm", "go", "gh", "uv", "lark_cli", "pnpm", "playwright_cli", "playwright", "miniprogram_ci"},
+                 {"npm", "@larksuite/cli", "pnpm", "@playwright/cli", "playwright", "miniprogram-ci"},
+                 {"node", "go", "gh", "uv"}),
+        "codex": ({"codex"}, {"@openai/codex"}, set()),
+        "multica": ({"multica"}, set(), {"multica"}),
+    }
+    if component not in schemas or manifest.get("component") != component:
+        raise ValueError("Incorrect component manifest")
+    fields = {"schema_version", "component", "versions", "npm", "artifacts"}
+    if component == "core":
+        fields.update({"base_image", "base_digest", "base_platforms"})
+    if set(manifest) != fields:
+        raise ValueError("Unexpected component manifest fields")
+    for field, expected in zip(("versions", "npm", "artifacts"), schemas[component]):
+        if set(manifest[field]) != expected:
+            raise ValueError("Unexpected component " + field)
+    if component == "codex" and manifest["versions"]["codex"] != manifest["npm"]["@openai/codex"]["version"]:
+        raise ValueError("Conflicting Codex versions")
+    for platforms in manifest["artifacts"].values():
+        if set(platforms) != {"amd64", "arm64"}:
+            raise ValueError("Expected both supported architectures")
 
 
 def verify_file(path, algorithm, expected):
@@ -137,7 +173,7 @@ def check_version(command, expected):
     print(command[0] + ": " + expected, flush=True)
 
 
-def install_archive(tool, artifact, temporary):
+def install_archive(tool, artifact, temporary, binary_dir=Path("/usr/local/bin")):
     archive = download(artifact, temporary / (tool + ".archive"))
     destination = temporary / tool
     extract(archive, destination)
@@ -154,19 +190,31 @@ def install_archive(tool, artifact, temporary):
             candidates = [p for p in destination.rglob(binary) if p.is_file()]
             if len(candidates) != 1:
                 raise ValueError("Missing or ambiguous binary: " + binary)
-            target = Path("/usr/local/bin") / binary
+            binary_dir.mkdir(parents=True, exist_ok=True)
+            target = binary_dir / binary
             shutil.copyfile(candidates[0], target)
             target.chmod(0o755)
 
 
-def install(manifest, arch):
+def install(manifest, arch, component="all"):
+    validate_component(manifest, component)
     if os.geteuid() != 0:
         raise ValueError("Image installation requires root")
+    if component in ("codex", "multica"):
+        with tempfile.TemporaryDirectory(prefix="agent-tools-") as temporary:
+            tmp = Path(temporary)
+            if component == "codex":
+                install_npm(manifest, tmp, CODEX)
+            else:
+                install_archive("multica", manifest["artifacts"]["multica"][arch], tmp, MULTICA)
+        verify(manifest, component)
+        return
     for root in (Path("/opt"), Path("/usr/local/bin"), PREFIX):
         root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="agent-tools-") as temporary:
         tmp = Path(temporary)
-        for tool in ("node", "go", "gh", "uv", "multica"):
+        tools = ("node", "go", "gh", "uv", "multica") if component == "all" else ("node", "go", "gh", "uv")
+        for tool in tools:
             install_archive(tool, manifest["artifacts"][tool][arch], tmp)
         # Replace Node's bundled npm in this same image layer. Exactly one npm
         # installation remains, at the normal Node-distribution symlink target.
@@ -181,51 +229,61 @@ def install(manifest, arch):
                 link.unlink()
             link.symlink_to("../lib/node_modules/npm/bin/" + name + "-cli.js")
 
-        (PREFIX / "package.json").write_text(json.dumps(npm_plan(manifest), sort_keys=True, indent=2) + "\n")
-        npm = str(NODE / "bin/npm")
-        env = {**os.environ, "PATH": str(NODE / "bin") + ":" + os.environ.get("PATH", ""),
-               "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1", "CI": "1", "NO_UPDATE_NOTIFIER": "1",
-               "npm_config_cache": str(tmp / "npm-cache"), "npm_config_registry": "https://registry.npmjs.org"}
-        # Prime npm's content-addressed cache from verified top-level tarballs.
-        # Dependency ranges within official npm packages are resolved by npm;
-        # package-lock.json records that build's complete dependency tree.
-        for index, (name, artifact) in enumerate(sorted(manifest["npm"].items())):
-            if name == "npm":
-                continue
-            archive = download(artifact, tmp / ("npm-" + str(index) + ".tgz"))
-            subprocess.run([npm, "cache", "add", str(archive)], env=env, check=True)
-        subprocess.run([npm, "install", "--prefix", str(PREFIX), "--no-audit", "--no-fund", "--prefer-offline"], env=env, check=True)
-        (PREFIX / "bin").mkdir(exist_ok=True)
-        # Expose only actual installed package binaries, without another global
-        # npm copy or an extra toolchain under the persistent user's HOME.
-        for source in sorted((PREFIX / "node_modules/.bin").iterdir()):
-            if source.is_symlink() and source.resolve().is_file():
-                (PREFIX / "bin" / source.name).symlink_to(os.path.relpath(source.resolve(), PREFIX / "bin"))
-    verify(manifest)
+        install_npm(manifest, tmp, PREFIX)
+    verify(manifest, component)
 
 
-def verify(manifest):
+def install_npm(manifest, tmp, prefix):
+    prefix.mkdir(parents=True, exist_ok=True)
+    (prefix / "package.json").write_text(json.dumps(npm_plan(manifest), sort_keys=True, indent=2) + "\n")
+    npm = str(NODE / "bin/npm")
+    env = {**os.environ, "PATH": str(NODE / "bin") + ":" + os.environ.get("PATH", ""),
+           "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1", "CI": "1", "NO_UPDATE_NOTIFIER": "1",
+           "npm_config_cache": str(tmp / "npm-cache"), "npm_config_registry": "https://registry.npmjs.org"}
+    # Prime npm's cache from verified direct tarballs; preserve upstream
+    # transitive contracts and record the resolved tree in package-lock.json.
+    for index, (name, artifact) in enumerate(sorted(manifest["npm"].items())):
+        if name == "npm":
+            continue
+        archive = download(artifact, tmp / ("npm-" + str(index) + ".tgz"))
+        subprocess.run([npm, "cache", "add", str(archive)], env=env, check=True)
+    subprocess.run([npm, "install", "--prefix", str(prefix), "--no-audit", "--no-fund", "--prefer-offline"], env=env, check=True)
+    (prefix / "bin").mkdir(exist_ok=True)
+    for source in sorted((prefix / "node_modules/.bin").iterdir()):
+        if source.is_symlink() and source.resolve().is_file():
+            (prefix / "bin" / source.name).symlink_to(os.path.relpath(source.resolve(), (prefix / "bin").resolve()))
+
+
+def verify(manifest, component="all"):
+    validate_component(manifest, component)
     versions = manifest["versions"]
     commands = {"node": [str(NODE / "bin/node"), "--version"],
                 "npm": [str(NODE / "bin/npm"), "--version"],
                 "go": [str(GO / "bin/go"), "version"],
                 "gh": ["/usr/local/bin/gh", "--version"],
                 "uv": ["/usr/local/bin/uv", "--version"],
-                "multica": ["/usr/local/bin/multica", "--version"],
-                "codex": [str(PREFIX / "bin/codex"), "--version"],
+                "multica": [str(MULTICA / "multica") if component == "multica" else "/usr/local/bin/multica", "--version"],
+                "codex": [str((CODEX if component == "codex" else PREFIX) / "bin/codex"), "--version"],
                 "lark_cli": [str(PREFIX / "bin/lark-cli"), "--version"],
                 "pnpm": [str(PREFIX / "bin/pnpm"), "--version"],
                 "playwright_cli": [str(PREFIX / "bin/playwright-cli"), "--version"]}
     for name, command in commands.items():
-        check_version(command, versions[name])
-    subprocess.run([str(PREFIX / "bin/playwright-cli"), "--help"], check=True, stdout=subprocess.DEVNULL, timeout=60)
+        if component == "all" or name in versions:
+            check_version(command, versions[name])
+    if component in ("all", "core"):
+        subprocess.run([str(PREFIX / "bin/playwright-cli"), "--help"], check=True, stdout=subprocess.DEVNULL, timeout=60)
     for name, artifact in manifest["npm"].items():
-        root = NODE / "lib/node_modules/npm" if name == "npm" else PREFIX / "node_modules" / name
+        prefix = CODEX if component == "codex" else PREFIX
+        # A full-manifest verification also supports the assembled split image.
+        if component == "all" and name == "@openai/codex" and CODEX.exists():
+            prefix = CODEX
+        root = NODE / "lib/node_modules/npm" if name == "npm" else prefix / "node_modules" / name
         actual = json.loads((root / "package.json").read_text())["version"]
         if actual != artifact["version"]:
             raise ValueError("Incorrect installed npm package: " + name)
     # Globally exposed Playwright is usable as a JS client, without browsers.
-    subprocess.run([str(NODE / "bin/node"), "-e", "const p=require('/opt/agent-tools/node_modules/playwright'); if(typeof p.chromium.connect !== 'function') process.exit(1)"], check=True)
+    if component in ("all", "core"):
+        subprocess.run([str(NODE / "bin/node"), "-e", "const p=require('/opt/agent-tools/node_modules/playwright'); if(typeof p.chromium.connect !== 'function') process.exit(1)"], check=True)
 
 
 def main():
@@ -234,18 +292,18 @@ def main():
     parser.add_argument("--arch", choices=("amd64", "arm64"), required=True)
     parser.add_argument("--base-image", help="Assert Docker FROM matches the shared manifest")
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--component", choices=("all", "core", "codex", "multica"), default="all")
     args = parser.parse_args()
     manifest = json.loads(args.manifest.read_text())
-    if manifest.get("schema_version") != 1:
-        raise ValueError("Unsupported manifest schema")
+    validate_component(manifest, args.component)
     if args.base_image and args.base_image != manifest["base_image"]:
         raise ValueError("Docker base does not match dependency manifest; pass --build-arg BASE_IMAGE")
     os.environ.update({"PATH": "/opt/agent-tools/bin:/opt/node/bin:/opt/go/bin:/usr/local/bin:/usr/bin:/bin",
                        "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1", "CI": "1", "NO_UPDATE_NOTIFIER": "1"})
     if args.verify_only:
-        verify(manifest)
+        verify(manifest, args.component)
     else:
-        install(manifest, args.arch)
+        install(manifest, args.arch, args.component)
 
 
 if __name__ == "__main__":

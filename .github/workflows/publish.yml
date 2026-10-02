@@ -66,6 +66,8 @@ jobs:
           path: .
       - name: Verify resolved dependency artifact
         run: python3 scripts/verify_dependency_lock.py
+      - name: Split independent component inputs
+        run: python3 scripts/split_dependencies.py --manifest runtime-deps.json --output .build-inputs
       - name: Build the resolved official dependencies
         run: |
           args=(--platform "linux/$ARCH" --pull --provenance=false --sbom=false
@@ -77,7 +79,27 @@ jobs:
             --label "org.opencontainers.image.version=$BUILD_TAG")
           # Reuse these exact inputs and the same BuildKit cache after the smoke test.
           printf '%s\0' "${args[@]}" > "$RUNNER_TEMP/build-args"
-          docker buildx build "${args[@]}" --load -t agent-runtime:test .
+      - name: Build and persist architecture cache
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          pull: true
+          provenance: false
+          sbom: false
+          load: true
+          tags: agent-runtime:test
+          build-args: BASE_IMAGE=${{ env.BASE_IMAGE }}
+          labels: |
+            org.opencontainers.image.base.name=${{ env.BASE_IMAGE }}
+            org.opencontainers.image.base.digest=${{ env.BASE_DIGEST }}
+            io.creek.runtime.dependencies=${{ env.DEPENDENCY_DIGEST }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.BUILD_TAG }}
+          cache-from: type=gha,version=2,scope=runtime-${{ matrix.arch }}
+          cache-to: type=gha,version=2,scope=runtime-${{ matrix.arch }},mode=max
       - name: Test without user credentials
         env:
           IMAGE: agent-runtime:test

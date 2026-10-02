@@ -7,3 +7,5 @@
 scripts/*
 !scripts/install_tools.py
 !runtime-deps.json
+!.build-inputs/
+!.build-inputs/*.json
