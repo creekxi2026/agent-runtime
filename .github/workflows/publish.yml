@@ -19,13 +19,22 @@ jobs:
       base_image: ${{ steps.upstream.outputs.base_image }}
       base_digest: ${{ steps.upstream.outputs.base_digest }}
       build_tag: ${{ steps.upstream.outputs.build_tag }}
+      dependency_digest: ${{ steps.upstream.outputs.dependency_digest }}
     steps:
       - uses: actions/checkout@v7
       - name: Unit tests
         run: python3 -m unittest discover -s tests -p 'test_*.py'
       - name: Resolve upstream and compare published image
         id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python3 scripts/check_upstream.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: runtime-deps
+          path: runtime-deps.json
+          if-no-files-found: error
+          retention-days: 1
   build:
     needs: check
     if: needs.check.outputs.changed == 'true'
@@ -47,15 +56,23 @@ jobs:
       BASE_IMAGE: ${{ needs.check.outputs.base_image }}
       BASE_DIGEST: ${{ needs.check.outputs.base_digest }}
       BUILD_TAG: ${{ needs.check.outputs.build_tag }}
+      DEPENDENCY_DIGEST: ${{ needs.check.outputs.dependency_digest }}
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - name: Build the resolved immutable upstream
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: runtime-deps
+          path: .
+      - name: Verify resolved dependency artifact
+        run: python3 scripts/verify_dependency_lock.py
+      - name: Build the resolved official dependencies
         run: |
           args=(--platform "linux/$ARCH" --pull --provenance=false --sbom=false
             --build-arg "BASE_IMAGE=$BASE_IMAGE"
             --label "org.opencontainers.image.base.name=$BASE_IMAGE"
             --label "org.opencontainers.image.base.digest=$BASE_DIGEST"
+            --label "io.creek.runtime.dependencies=$DEPENDENCY_DIGEST"
             --label "org.opencontainers.image.revision=$GITHUB_SHA"
             --label "org.opencontainers.image.version=$BUILD_TAG")
           # Reuse these exact inputs and the same BuildKit cache after the smoke test.
@@ -65,6 +82,10 @@ jobs:
         env:
           IMAGE: agent-runtime:test
         run: sh tests/smoke.sh
+      - name: Verify real remote browser client
+        env:
+          IMAGE: agent-runtime:test
+        run: bash tests/remote-browser.sh
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io

@@ -30,16 +30,16 @@ services:
       - type: bind
         source: ${SHARED_CODEX_DIR:?请在 .env 设置共享 Codex 专用配置目录}
         target: /shared/codex
-        read_only: true
+        read_only: false
         bind:
           create_host_path: false
       - type: bind
         source: ${SHARED_SKILLS_DIR:?请在 .env 设置共享 skills 目录}
         target: /home/agent/.agents/skills
-        read_only: true
+        read_only: false
         bind:
           create_host_path: true
-    # 允许 agent 更新它拥有的工具目录；两个共享挂载仍只读。
+    # 共享配置和 skills 可写；宿主权限须允许 UID/GID 1000:1000 写入。
     read_only: false
     tmpfs: [/tmp]
     cap_drop: [ALL]

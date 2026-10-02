@@ -8,7 +8,7 @@ export SHARED_SKILLS_DIR="$shared/skills"
 export SHARED_CODEX_DIR="$shared/codex"
 reader_a=''
 reader_b=''
-compose() { p=$1; shift; DATA_DIR="$shared/$p-home" docker compose -f compose.yaml -f tests/compose.yaml --env-file runtime.env.example -p "$p" "$@"; }
+compose() { p=$1; shift; DATA_DIR="$shared/$p-home" docker compose -f compose.yaml -f tests/compose.yaml -f tests/compose.readonly.yaml --env-file runtime.env.example -p "$p" "$@"; }
 cleanup() {
   if [ -n "$reader_a" ]; then docker rm -f "$reader_a" >/dev/null 2>&1 || true; fi
   if [ -n "$reader_b" ]; then docker rm -f "$reader_b" >/dev/null 2>&1 || true; fi
@@ -63,8 +63,14 @@ docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000
   miniprogram-ci --version
   miniprogram-ci --help >/dev/null
   go version; uv --version; pnpm --version
-  timeout 20 mcp-proxy --help >/dev/null
-  timeout 20 specify --version
+  for tool in git gh ssh curl jq rg rsync zip unzip python3 gcc g++ make pkg-config; do command -v "$tool"; done
+  for tool in docker podman postgres chromium firefox; do
+    if command -v "$tool" >/dev/null 2>&1; then echo "Unexpected tool: $tool"; exit 16; fi
+  done
+  test ! -d /opt/agent-upstream
+  test ! -d /ms-playwright
+  test ! -d /home/agent/.cache/ms-playwright
+  python3 -m json.tool /usr/share/agent-runtime/dependencies.json >/dev/null
   test "$(command -v bwrap)" = /usr/bin/bwrap
   bwrap --version
   case "$(command -v codex)" in /home/agent/*) exit 10 ;; esac
@@ -82,7 +88,7 @@ for mode in -lc -ic -ilc; do
     mkdir -p "$CODEX_HOME"
     for tool in node codex lark-cli playwright-cli miniprogram-ci; do command -v "$tool"; done
     case ":$PATH:" in *:/opt/agent-tools/bin:*) ;; *) exit 14 ;; esac
-    case ":$PATH:" in *:/opt/agent-upstream/.local/node-active:*) ;; *) exit 15 ;; esac
+    case ":$PATH:" in *:/opt/node/bin:*) ;; *) exit 15 ;; esac
     lark-cli --help >/dev/null
     miniprogram-ci --version
     miniprogram-ci --help >/dev/null
@@ -95,11 +101,15 @@ compose "$project-a" run --rm runtime sh -ec 'test -f /home/agent/workspace/tena
 compose "$project-a" run --rm -T runtime python3 - install < tests/home_fixture.py
 compose "$project-a" run --rm -T runtime python3 - check < tests/home_fixture.py
 compose "$project-b" run --rm -T runtime python3 - isolated < tests/home_fixture.py
-# Launch bundled browsers offline against a genuinely empty mounted HOME.
-docker run --rm -i --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000,mode=700 \
-  --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
-  --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
-  "$IMAGE" node < tests/browser_relocation_probe.cjs
+# The delivered Compose permits shared writes, still under agent identity.
+DATA_DIR="$shared/$project-a-home" docker compose -f compose.yaml -f tests/compose.yaml \
+  --env-file runtime.env.example -p "$project-a" run --rm runtime sh -ec '
+    test "$(id -u)" = 1000
+    printf writable > /shared/codex/write-probe
+    printf writable > /home/agent/.agents/skills/runtime-shared-smoke/write-probe
+    rm /shared/codex/write-probe /home/agent/.agents/skills/runtime-shared-smoke/write-probe
+  '
+# Real remote-browser verification is a separate CI step; browsers never enter this image.
 # Keep both user containers alive while one host-side update reaches both.
 reader_a=$(compose "$project-a" run --no-deps -d runtime sleep 300)
 reader_b=$(compose "$project-b" run --no-deps -d runtime sleep 300)
@@ -122,4 +132,4 @@ else
   grep -qi 'not authenticated' "$log"
 fi
 rm "$log"
-printf '%s\n' 'PASS: offline startup, real relocated tools/browsers, empty HOME mounts and persistent user installs, no Podman/socket, non-root/read-only, per-user persistence, real Codex shared-skills/config parsing and API-key account type (not authentication), atomic shared-file update for two users, read-only shared mounts, missing-auth rejection.'
+printf '%s\n' 'PASS: offline startup, self-built tools, Go race/CGO, Python venv, rsync, empty HOME mounts and persistent user installs, no Podman/socket, non-root/read-only, per-user persistence, real Codex shared-skills/config parsing and API-key account type (not authentication), atomic shared-file update for two users, writable default and optional read-only shared mounts, missing-auth rejection.'

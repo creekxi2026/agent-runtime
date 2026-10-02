@@ -33,6 +33,16 @@ class UpdateTests(unittest.TestCase):
         mixed["arm64"] = labels(OTHER)["arm64"]
         self.assertTrue(requires_build(BASE, REVISION, mixed))
 
+    def test_dependency_change_rebuilds_and_unchanged_skips(self):
+        current = labels()
+        for item in current.values():
+            item["io.creek.runtime.dependencies"] = BASE
+        self.assertFalse(requires_build(BASE, REVISION, current, BASE))
+        self.assertTrue(requires_build(BASE, REVISION, current, OTHER))
+        self.assertTrue(requires_build(BASE, REVISION, labels(), BASE))
+        with self.assertRaises(ValueError):
+            requires_build(BASE, REVISION, current, "latest")
+
     def test_missing_architecture_rejected(self):
         with self.assertRaises(ValueError):
             platforms({"manifests": []})

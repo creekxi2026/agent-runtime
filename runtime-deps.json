@@ -1,0 +1,112 @@
+{
+  "artifacts": {
+    "gh": {
+      "amd64": {
+        "sha256": "bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386",
+        "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz"
+      },
+      "arm64": {
+        "sha256": "7862c86c72f43df3a2d93ddde6f473285b4e2af61b494849846827e513ef6484",
+        "url": "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_arm64.tar.gz"
+      }
+    },
+    "go": {
+      "amd64": {
+        "sha256": "63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445",
+        "url": "https://go.dev/dl/go1.27.1.linux-amd64.tar.gz"
+      },
+      "arm64": {
+        "sha256": "3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec",
+        "url": "https://go.dev/dl/go1.27.1.linux-arm64.tar.gz"
+      }
+    },
+    "multica": {
+      "amd64": {
+        "sha256": "53ee75577a9194532c7d11b9ea65d2851374f3f674bbcb70266c9acee50e8bfc",
+        "url": "https://github.com/multica-ai/multica/releases/download/v0.6.1/multica-cli-0.6.1-linux-amd64.tar.gz"
+      },
+      "arm64": {
+        "sha256": "8160423517067fe275fc8392b592dad283b59a7d3c3cd5ad188565a52438ea62",
+        "url": "https://github.com/multica-ai/multica/releases/download/v0.6.1/multica-cli-0.6.1-linux-arm64.tar.gz"
+      }
+    },
+    "node": {
+      "amd64": {
+        "sha256": "ca70e9e349de048b9522abb3adc05b3bd6f43c5ffd3ec57916c7da292f59f022",
+        "url": "https://nodejs.org/dist/v26.10.0/node-v26.10.0-linux-x64.tar.xz"
+      },
+      "arm64": {
+        "sha256": "7a6353f63eb3d04765004b4adf172616243e4522434635cb1d26288658b04ab5",
+        "url": "https://nodejs.org/dist/v26.10.0/node-v26.10.0-linux-arm64.tar.xz"
+      }
+    },
+    "uv": {
+      "amd64": {
+        "sha256": "b9980552309f09c15172b8be828555e375097f16deb459795ce7bfd200380f0b",
+        "url": "https://github.com/astral-sh/uv/releases/download/0.12.22/uv-x86_64-unknown-linux-gnu.tar.gz"
+      },
+      "arm64": {
+        "sha256": "6f66a14e8239871fb477f9746c941fedfa77e8fe28a8bc7c07e1dc7f53a66712",
+        "url": "https://github.com/astral-sh/uv/releases/download/0.12.22/uv-aarch64-unknown-linux-gnu.tar.gz"
+      }
+    }
+  },
+  "base_digest": "sha256:5bc3287b25407c965a30f38e32603dc253a3869e1b12a21ac09bfc27fd8b13ce",
+  "base_image": "debian:stable-slim@sha256:5bc3287b25407c965a30f38e32603dc253a3869e1b12a21ac09bfc27fd8b13ce",
+  "base_platforms": {
+    "amd64": "sha256:520c7157b4b1c3c46fa56bac0e748ea21d60956c0512b300e3b16d8757f68e2d",
+    "arm64": "sha256:6cd299e86325abd62517d61ee57cba4fbef96ac9f086afee1613db7091443007"
+  },
+  "npm": {
+    "@larksuite/cli": {
+      "integrity": "sha512-u6cAXLuxgfYHVAThoFA00G6lTLFPyTBxWW7KH7mP7u3cwQgLPHGjvDbU4xNm3tzoVT0jlk3Rshvxl+PAbnnFew==",
+      "url": "https://registry.npmjs.org/@larksuite/cli/-/cli-1.0.97.tgz",
+      "version": "1.0.97"
+    },
+    "@openai/codex": {
+      "integrity": "sha512-kEtVGzjRAYAMOwJxN39bGcna7LT3IDQgq64NNJ/dDTfu4OzZaocJcyNb5/gGJ/IVF/Vj7oK7E2m3nmTan7lpjg==",
+      "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.160.0.tgz",
+      "version": "0.160.0"
+    },
+    "@playwright/cli": {
+      "integrity": "sha512-6WMkQNM4VEzqMkdr/l60X9Cr7i+tI/arK87IWz2K7pB6j8I2ZJ8KN+1JfhJDLnK+SXnab6Op8xGt4adcGLsyfA==",
+      "url": "https://registry.npmjs.org/@playwright/cli/-/cli-0.1.22.tgz",
+      "version": "0.1.22"
+    },
+    "miniprogram-ci": {
+      "integrity": "sha512-SREx6UnJC74aQ2a1YMNShqQOB97nHO+ll6ZQrCQp98NHXcRq848VjZoD5ELpd95z+8uTASQUAcFtl/HrXuM7Nw==",
+      "url": "https://registry.npmjs.org/miniprogram-ci/-/miniprogram-ci-2.1.31.tgz",
+      "version": "2.1.31"
+    },
+    "npm": {
+      "integrity": "sha512-ZsJjKpTnlmSXOLLXiU1xDCzC4Wlok4IwZmh/aw2KUuXytU7q6qMv/cUT7MoeSf95Slwuw/lRXYefGzGCspHPNQ==",
+      "url": "https://registry.npmjs.org/npm/-/npm-12.2.0.tgz",
+      "version": "12.2.0"
+    },
+    "playwright": {
+      "integrity": "sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==",
+      "url": "https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz",
+      "version": "1.63.0"
+    },
+    "pnpm": {
+      "integrity": "sha512-9kupB1B/XOr+BsjTjmBS0BeURFgOwSed3Vv8EctIqoomRLZlmOB+dh2oSHKp/FfV+QK4f6SdAkGY1VhhKqu+RQ==",
+      "url": "https://registry.npmjs.org/pnpm/-/pnpm-12.8.1.tgz",
+      "version": "12.8.1"
+    }
+  },
+  "schema_version": 1,
+  "versions": {
+    "codex": "0.160.0",
+    "gh": "2.102.0",
+    "go": "1.27.1",
+    "lark_cli": "1.0.97",
+    "miniprogram_ci": "2.1.31",
+    "multica": "0.6.1",
+    "node": "26.10.0",
+    "npm": "12.2.0",
+    "playwright": "1.63.0",
+    "playwright_cli": "0.1.22",
+    "pnpm": "12.8.1",
+    "uv": "0.12.22"
+  }
+}

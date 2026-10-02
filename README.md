@@ -1,12 +1,14 @@
 # Agent Runtime
 
-基于 [sapk/multica-docker-env](https://github.com/sapk/multica-docker-env) 的 Codex 镜像，补充 `lark-cli`、面向 Agent 的 `playwright-cli`、微信小程序 `miniprogram-ci` 和系统版 `bubblewrap`（`/usr/bin/bwrap`）。启动时不安装软件。
+基于官方 Debian stable-slim 自建的多用户开发工具镜像，不再继承第三方全量开发环境。预装 Multica、Codex、Lark CLI、微信小程序 miniprogram-ci、Playwright 客户端、Node/npm/pnpm、Go、Python/venv/uv、Git/GitHub CLI、SSH 客户端、rsync、编译工具链及系统 bubblewrap。启动时不安装软件。
+
+不预装浏览器、Docker/Podman、数据库服务端或浏览器专用图形库。TypeScript、Jest、Biome、MorJS 等项目库按项目锁文件安装，不另装全局副本。
 
 `bubblewrap` 在构建时通过系统软件源安装，两种架构的发布检查均确认其路径和版本。预装该工具不等于解除宿主机或容器的 namespace、seccomp、AppArmor 限制；仍需使用与 Linux 沙箱兼容的运行配置。
 
 ## 统一 HOME 与持久化
 
-容器内账号登记的家目录、`HOME` 和默认工作目录统一为 `/home/agent`，任务工作区为 `/home/agent/workspace`。Codex、Multica、Lark、XDG 配置和缓存均位于该 HOME。预装工具迁出原 HOME 并修复安装路径；最终 rootfs 在迁移后平铺，避免最终镜像保留两份上游工具。代价是无法继续复用上游原始镜像层，构建临时空间和下载成本仍需考虑。
+容器内账号登记的家目录、`HOME` 和默认工作目录统一为 `/home/agent`，任务工作区为 `/home/agent/workspace`。Codex、Multica、Lark、XDG 配置和缓存均位于该 HOME。预装工具直接安装在 `/opt` 或系统命令目录，不依赖 HOME，也不再做旧上游目录迁移或整个 rootfs 平铺。每个直接管理的工具只保留一个版本；npm 间接依赖遵守各工具的兼容约束。
 
 Compose 将 `${DATA_DIR:-./data}` 绑定到 `/home/agent`。**升级时保持原 DATA_DIR 和宿主机目录，不会自动搬动 NAS 文件。** `/data` 仅保留为指向 `/home/agent` 的旧路径兼容别名，用于已有会话中的绝对路径，不是第二份存储。新配置只使用规范 HOME 路径。
 
@@ -15,16 +17,16 @@ Compose 将 `${DATA_DIR:-./data}` 绑定到 `/home/agent`。**升级时保持原
 - `npm install -g 包名`：prefix 为 `~/.local`，命令在 `~/.local/bin`。
 - `uv tool install 包名`：环境在 `~/.local/share/uv/tools`，命令在 `~/.local/bin`。
 - Go：`GOPATH=~/.local/share/go`、`GOBIN=~/.local/bin`、`GOTMPDIR=~/.cache/go-tmp`（避免依赖 `/tmp` 可执行）；pnpm 用户目录在 `~/.local/share/pnpm`。
-- 使用 UID/GID `1000:1000` 的 agent 身份安装。`apt` 等系统包仍通过镜像构建维护；不要向只读共享目录或预装工具目录安装用户软件。
+- 使用 UID/GID `1000:1000` 的 agent 身份安装。`apt` 等系统包仍通过镜像构建维护；不要向共享配置目录或预装工具目录安装用户软件。
 - 持久化以重建后复用同一宿主目录为前提；不保证跨 CPU 架构或系统版本复用已有原生扩展。
 
 旧版升级须**同时替换 Compose 并重建容器**，不能沿用包含 `/data` 初始化逻辑的旧自定义入口。新镜像已内置一次性目录初始化与降权，无需在 Compose 重复嵌入脚本。已有 `.env` 不要覆盖；默认 `./data` 与原可见数据版一致。原先使用命名卷的部署应保留原卷的类型和 source，仅调整挂载目标与启动配置，不能直接换成空的 bind 目录。
 
 ## 命令 PATH 与小程序 CLI
 
-上游工具放在 `/opt/agent-upstream`，补充工具放在 `/opt/agent-tools`，均由 root 所有。镜像通过 `ENV PATH` 与统一 `/etc/profile.d/agent-tools.sh`（同时作为 `BASH_ENV`）保持命令路径，不再自动加载上游 nvm.sh。用户的 `~/.local/bin` 优先于预装工具；挂载空 HOME 不会遮住工具链。发布检查覆盖普通进程以及 `bash -lc`、`bash -ic`、`bash -ilc`。
+Node 放在 `/opt/node`，Go 放在 `/opt/go`，npm CLI 放在 `/opt/agent-tools`，独立 CLI 放在 `/usr/local/bin`，均由 root 所有。镜像通过 `ENV PATH` 与统一 `/etc/profile.d/agent-tools.sh`（同时作为 `BASH_ENV`）保持命令路径，不再自动加载上游 nvm.sh。用户的 `~/.local/bin` 优先于预装工具；挂载空 HOME 不会遮住工具链。发布检查覆盖普通进程以及 `bash -lc`、`bash -ic`、`bash -ilc`。
 
-`miniprogram-ci` 构建版本固定为当前选定的 npm 最新版 `2.1.31`，命令为 `miniprogram-ci`，不是 Mac 微信开发者工具的 GUI/CLI。使用 `miniprogram-ci --help` 查看参数；预览、上传仍需项目 AppID、上传私钥及微信侧相应配置。镜像不含这些凭据，发布检查只验证离线 CLI 可用，不执行真实上传。
+`miniprogram-ci` 在每次构建解析时选定 npm latest 正式版本并固定，命令为 `miniprogram-ci`，不是 Mac 微信开发者工具的 GUI/CLI。使用 `miniprogram-ci --help` 查看参数；预览、上传仍需项目 AppID、上传私钥及微信侧相应配置。镜像不含这些凭据，发布检查只验证离线 CLI 可用，不执行真实上传。
 
 ## 使用
 
@@ -56,18 +58,18 @@ docker compose up -d
 
 管理员只维护专用目录中的两个文件：`config.toml` 和 API-key 模式的 `auth.json`。从 [config.toml.example](shared-codex/config.toml.example) 与 [auth.json.example](shared-codex/auth.json.example) 建立这两个文件，再由管理员在宿主机安全填写 API Key；模板 Key 为空，不能用于认证。不要从个人账户复制完整 `.codex`，也不要把个人 `.codex` 作为 `SHARED_CODEX_DIR`。
 
-每份 `.env` 设置相同宿主机目录 `SHARED_CODEX_DIR=../shared-codex`，或使用同一个绝对路径。该目录与下文 `shared-skills/` 并列；相对路径以各自 `compose.yaml` 所在目录为基准。目录需事先存在，两个文件及目录访问权限须允许容器 UID 1000 读取；建议通过所有者／组／ACL 控制，勿为方便给真实凭据开放全员读写。Compose 不自动创建该目录；文件缺失或不可读时，入口明确报路径并失败。
+每份 `.env` 设置相同宿主机目录 `SHARED_CODEX_DIR=../shared-codex`，或使用同一个绝对路径。该目录与下文 `shared-skills/` 并列；相对路径以各自 `compose.yaml` 所在目录为基准。目录需事先存在，两个文件及目录访问权限须允许容器 UID/GID 1000:1000 读写；建议通过所有者／组／ACL 控制，勿为方便给真实凭据开放全员读写。Compose 不自动创建该目录；文件缺失或不可读时，入口明确报路径并失败。
 
-- 整个**专用目录**只读挂到 `/shared/codex`，容器设置 `CODEX_SHARED_DIR=/shared/codex`。仅 `/home/agent/.codex/config.toml` 和 `auth.json` 链接到共享文件；其余 `.codex` 会话、缓存及 `multica-sessions` 保留在各用户私有卷内。
+- 整个**专用目录**可写挂到 `/shared/codex`，容器设置 `CODEX_SHARED_DIR=/shared/codex`。仅 `/home/agent/.codex/config.toml` 和 `auth.json` 链接到共享文件；其余 `.codex` 会话、缓存及 `multica-sessions` 保留在各用户私有卷内。
 - 首次切换如已有私有文件，将其保留为同目录 `config.toml.before-shared`／`auth.json.before-shared`，不删除、不覆盖；需要迁移但备份名已存在则直接失败，由管理员确认处理后重试。正确链接重复启动不改动。旧凭据备份仍需按私有凭据保护。
 - 挂目录而非单文件：管理员编辑器原子替换文件后，链接仍能读取更新。新任务读取最新默认配置；Multica 为每任务复制配置并链接认证，已运行任务不承诺热更新。不同宿主机需自行同步。
 - 只支持 API Key 文件认证，不适用需要刷新写回的 ChatGPT OAuth。不要在共享模式执行 `codex login`／`logout`；Compose 不再传入每用户 `CODEX_BOOTSTRAP_API_KEY`，入口在共享模式也不会执行旧 bootstrap 写回。脱离此 Compose、未设置 `CODEX_SHARED_DIR` 时仍保留原 API Key bootstrap 兼容。
-- 所有人使用同一个管理员维护的 Key，不按用户分配额度。只读挂载只防止容器修改宿主文件，**不能对容器用户隐藏 Key**；能运行容器内代码的人就能读取它。Multica／飞书的用户 Token 和 OAuth 不在此共享范围内。
+- 所有人使用同一个管理员维护的 Key，不按用户分配额度。可写共享意味着任一实例都能修改全体用户共用的配置、Key 和 skills，**不能对容器用户隐藏 Key**；能运行容器内代码的人就能读取它。Multica／飞书的用户 Token 和 OAuth 不在此共享范围内。
 - 默认模板只设置 `cli_auth_credentials_store = "file"`，不猜测模型、服务地址或权限策略。管理员可维护默认参数，但 Multica 可能覆盖 sandbox、memory、multiagent 等字段；共享配置不是强制安全策略。
 
 ## 共享 skills
 
-同一 Docker 宿主机上的用户将 `SHARED_SKILLS_DIR` 指向同一个管理员维护的目录，所有容器只读挂载到 `/home/agent/.agents/skills`。默认布局：
+同一 Docker 宿主机上的用户将 `SHARED_SKILLS_DIR` 指向同一个管理员维护的目录，所有容器可写挂载到 `/home/agent/.agents/skills`。默认布局：
 
 ```text
 部署根目录/
@@ -77,9 +79,9 @@ docker compose up -d
 └── user02/compose.yaml + .env
 ```
 
-每份 `.env` 保留独立的 `COMPOSE_PROJECT_NAME`，共享目录填 `../shared-skills`，也可填宿主机绝对路径。目录不存在时 Compose 会创建空目录；管理员在宿主机放入技能，确保容器 UID 1000 可读取。更新技能内容只改这一个目录，不需要逐用户更新或重建镜像。不同宿主机需自行同步这份目录，不会跨主机自动共享。
+每份 `.env` 保留独立的 `COMPOSE_PROJECT_NAME`，共享目录填 `../shared-skills`，也可填宿主机绝对路径。目录不存在时 Compose 会创建空目录；管理员在宿主机放入技能，确保容器 UID/GID 1000:1000 可读写。更新技能内容只改这一个目录，不需要逐用户更新或重建镜像。不同宿主机需自行同步这份目录，不会跨主机自动共享。
 
-Multica 的 Agent → Skills 可请求在线 runtime 扫描本地技能并控制是否禁用；本地技能默认继承，不是勾选前不可见。新任务读取最新技能，已运行任务不保证热更新。不要再在各用户 `.codex/skills` 保留同名旧副本，它们会优先于共享目录。共享目录不放 Token、私有数据或只应对部分用户开放的技能；技能中的脚本应把输出和缓存写到用户自己的工作目录，不能写回只读技能目录。
+Multica 的 Agent → Skills 可请求在线 runtime 扫描本地技能并控制是否禁用；本地技能默认继承，不是勾选前不可见。新任务读取最新技能，已运行任务不保证热更新。不要再在各用户 `.codex/skills` 保留同名旧副本，它们会优先于共享目录。共享目录不放 Token、私有数据或只应对部分用户开放的技能；技能中的脚本仍应把输出和缓存写到用户自己的工作目录，避免污染共享技能。若需要只读策略，可把两处共享挂载的 read_only 改为 true；检查同时覆盖两种模式。
 
 **不要为保持同步而点“Copy from a runtime”**：那会生成中心库快照，不自动跟随宿主文件变化。同一个 Multica workspace 也可以直接维护其内置 Skills 库并分配给多个 Agent；这种方式不依赖宿主目录。两种来源避免同名冲突。
 
@@ -89,11 +91,7 @@ Multica 的 Agent → Skills 可请求在线 runtime 扫描本地技能并控制
 
 Mac 上另行部署每用户独立的 Playwright 服务，将其 WebSocket 地址填入 `PLAYWRIGHT_WS_ENDPOINT`：
 
-```bash
-docker compose exec --user 1000:1000 runtime sh -c 'playwright-cli attach --endpoint="$PLAYWRIGHT_WS_ENDPOINT"'
-```
-
-这不是 MCP 或 CDP 地址。客户端与远端的 Playwright 协议版本必须兼容。Agent 任务也可以直接调用 `playwright-cli attach`。上游自带的 `@playwright/test` 与 `@playwright/cli` 是两个不同工具；后者不重复下载浏览器，主要用于连接远程浏览器。
+预装 `playwright` JavaScript API 和 `playwright-cli`；任务通过客户端配置或 `chromium.connect(process.env.PLAYWRIGHT_WS_ENDPOINT)` 连接。该地址不是 MCP 或 CDP 地址。客户端与远端 Playwright 的主、次协议版本须兼容；自动升级客户端不意味着可以自动升级 Mac 服务，版本不匹配时应协调两端。不会在启动时下载浏览器。
 
 ## 更新
 
@@ -110,7 +108,9 @@ docker compose pull
 docker compose up -d
 ```
 
-每天北京时间 **09:23**，以及推送 main／手动触发时，检查上游 `ghcr.io/sapk/multica-agent-codex:latest`。上游 digest 和本仓库提交均未变化则跳过构建；有变化时先解析为固定 digest，让两个架构使用同一基础镜像。amd64／arm64 在原生 runner 上分别构建并通过真实容器测试后，只按 digest 上传；确认上传的镜像配置 digest 与受测镜像相同，才合并更新 `latest`。构建、测试或该一致性检查失败不会更新 `latest`。构建编号仅保留在镜像标签元数据中，不产生公开 tag。补充的 lark-cli／playwright-cli／miniprogram-ci 版本仍在 Dockerfile 中固定，由维护者更新。
+每天北京时间 **09:23**，以及推送 main／手动触发时，直接检查官方基础镜像和各工具最新稳定发布，不再跟随 sapk 镜像。一次解析生成 `runtime-deps.json`，固定基础镜像 digest、各工具版本和下载校验值；两架构下载同一个解析产物并验证 SHA256 后再构建。已发布的基础 digest、依赖指纹和源码提交都未变化则跳过构建。系统软件包使用构建当时 Debian 稳定仓库的候选版本；没有单独承诺在基础镜像/工具/源码均不变时重建以追踪 apt 仓库变化。
+
+amd64／arm64 在原生 runner 上分别构建并通过真实容器测试后，只按 digest 上传；确认上传的镜像配置 digest 与受测镜像相同，才合并更新 `latest`。测试失败不更新 `latest`。构建编号仅写镜像元数据，不产生额外 tag。镜像 `/usr/share/agent-runtime/dependencies.json` 保存该次实际解析的工具版本；仓库同名文件是本地构建基线，日更解析不自动改写 Git 主分支。
 
 发布后自动清理历史版本，包括旧 `0.1.0`、构建／架构标签及无引用 manifest；保留 `latest` 和它递归依赖的全部 manifest。清理前匿名读取最新索引、确认两个架构，并完整校验所依赖的 manifest 和 blob；删除前再次检查 `latest` 未改变。依赖缺失、保留项仍有其他标签或清理权限不足时，工作流会明确失败，不绕过检查或删除受保护依赖。无变化的定时／手动运行也会重试清理。脚本 `scripts/cleanup_ghcr.py` 默认仅预览，Actions 使用本仓库的 `GITHUB_TOKEN` 和显式 `--apply` 执行，仅允许操作 `creekxi2026/agent-runtime` 包；该包须向本仓库授予 admin 权限，`packages: write` 本身不能绕过包的权限设置。
 
@@ -122,18 +122,21 @@ docker compose up -d
 
 - 单服务启动时短暂以 root 初始化 HOME 目录所有权，随后主进程与 tini 降为 UID/GID 1000，清空 capabilities。NAS 交互终端请显式选择 agent 用户；Docker exec 不会自动经过入口降权。
 - 预装工具在 `/opt`，用户 HOME 为独立 bind 目录。允许写容器层，但预装目录归 root 所有；用户持久工具优先，并可能覆盖同名命令，升级时应考虑该优先级。
-- 不运行上游默认 Podman/RTK 初始化，不挂宿主 Docker socket，不提供 Docker-in-Docker。
+- 不安装 Docker/Podman，也不运行旧上游初始化，不挂宿主 Docker socket，不提供 Docker-in-Docker。
 - 未配置 Multica 认证时启动失败；Compose 使用 `unless-stopped`，应查看日志并修复配置，不能把容器反复重启视为在线可用。
 - 为兼容内层 Linux 沙箱，Compose 对该容器使用 seccomp/AppArmor unconfined，保留 no-new-privileges，不启用 privileged 或 SYS_ADMIN。这减少了两层 Docker 防护，不等于完整安全隔离。
 - 默认 bind 数据在 `down` 后保留；删除宿主目录才会删除这些文件。若自行使用命名卷，`down -v` 会删除该卷。
 - 文件卷分离不替代 Multica 服务端鉴权或远程浏览器权限。不要给多个用户共享管理员 Token；不将此模板宣称为完整恶意多租户安全边界。
-- 镜像来自社区上游，包含额外工具和浏览器，体积及依赖风险随之继承。第三方组件遵循各自许可证。
+- 基础系统和工具从官方源获取；第三方组件遵循各自许可证。
 
 ## 维护者本地构建
 
 ```bash
-docker build -t agent-runtime:test .
+python3 scripts/resolve_tools.py --output runtime-deps.json
+BASE_IMAGE=$(python3 -c 'import json; print(json.load(open("runtime-deps.json"))["base_image"])')
+docker build --build-arg "BASE_IMAGE=$BASE_IMAGE" -t agent-runtime:test .
 IMAGE=agent-runtime:test sh tests/smoke.sh
+IMAGE=agent-runtime:test bash tests/remote-browser.sh
 ```
 
 单元／静态验证无需 Docker 引擎：
@@ -145,6 +148,6 @@ sh -n tests/smoke.sh
 docker compose --env-file runtime.env.example config --quiet
 ```
 
-容器 smoke 使用临时共享目录、明显无效的 API Key 和禁用网络的两个用户容器；通过真实 Codex `config/read`、`account/read`（不刷新 Token）及 `skills/list` 检查文件解析、账户类型、共享更新和只读挂载，不发起模型请求。无效 Key 被识别为 API-key 模式不等于认证成功。真实 API 认证、Multica 派发、飞书 OAuth 和远程浏览器连接需独立验收。
+容器 smoke 使用临时共享目录、明显无效的 API Key 和禁用网络的两个用户容器；通过真实 Codex `config/read`、`account/read`（不刷新 Token）及 `skills/list` 检查文件解析、账户类型、共享更新和只读挂载，不发起模型请求。无效 Key 被识别为 API-key 模式不等于认证成功。另用一次性浏览器服务容器验证精简客户端能远程控制真实页面并截图；测试浏览器不进入发布镜像，不使用用户 Mac、URL 或认证。真实 API 认证、Multica 派发、飞书 OAuth 和用户 NAS→Mac 连通性仍需独立验收。
 
 验证分支 `verify/**` 仅运行双架构构建与检查，不推送镜像、不更新 latest；主分支仍沿现有发布流程运行。

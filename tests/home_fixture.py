@@ -18,7 +18,8 @@ for process in ("1", "self"):
     for key in ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"):
         assert int(status[key].strip(), 16) == 0, (process, key)
     assert status["NoNewPrivs"].strip() == "1"
-assert not os.access("/opt/agent-upstream", os.W_OK)
+for directory in ("/opt/node", "/opt/go"):
+    assert Path(directory).is_dir() and not os.access(directory, os.W_OK)
 assert not os.access("/opt/agent-tools", os.W_OK)
 mode = sys.argv[1]
 if mode == "install":
@@ -28,9 +29,13 @@ if mode == "install":
     (package / "cli.js").write_text('#!/usr/bin/env node\nconsole.log("persistent-home-tool");\n')
     (package / "cli.js").chmod(0o755)
     subprocess.run(["npm", "install", "-g", "--offline", "--no-audit", "--no-fund", str(package)], check=True, timeout=30)
-    # Exercise the relocated Go compiler and its standard library, not only --version.
+    # Exercise Go compilation and race/CGO support, not only --version.
     (package / "hello.go").write_text('package main\nimport "fmt"\nfunc main() { fmt.Println("relocated-go-ok") }\n')
-    assert subprocess.check_output(["go", "run", str(package / "hello.go")], text=True, timeout=90).strip() == "relocated-go-ok"
+    assert subprocess.check_output(["go", "run", "-race", str(package / "hello.go")], text=True, timeout=180).strip() == "relocated-go-ok"
+    subprocess.run(["python3", "-m", "venv", str(home / ".local/share/venv-probe")], check=True, timeout=30)
+    subprocess.run([str(home / ".local/share/venv-probe/bin/python"), "-m", "pip", "--version"], check=True)
+    subprocess.run(["rsync", "-a", str(package) + "/", str(home / "workspace/rsync-probe")], check=True)
+    assert (home / "workspace/rsync-probe/hello.go").read_text() == (package / "hello.go").read_text()
 if mode in ("install", "check"):
     assert (home / ".local/bin/runtime-home-probe").exists()
     assert subprocess.check_output(["runtime-home-probe"], text=True).strip() == "persistent-home-tool"

@@ -1,13 +1,14 @@
-"""Resolve a public GHCR base once; skip only when both published arches match."""
+"""Resolve official tool versions once; skip only if both published arches match."""
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import subprocess
+import sys
 import urllib.error
 import urllib.request
 
-UPSTREAM = "sapk/multica-agent-codex"
 ARCHES = {"amd64", "arm64"}
 ACCEPT = ",".join((
     "application/vnd.oci.image.index.v1+json",
@@ -63,11 +64,14 @@ def platforms(index):
     return result
 
 
-def requires_build(base_digest, revision, published_labels):
+def requires_build(base_digest, revision, published_labels, dependency_digest=None):
     digest(base_digest)
+    if dependency_digest is not None:
+        digest(dependency_digest)
     return set(published_labels) != ARCHES or any(
         labels.get("org.opencontainers.image.base.digest") != base_digest
         or labels.get("org.opencontainers.image.revision") != revision
+        or (dependency_digest is not None and labels.get("io.creek.runtime.dependencies") != dependency_digest)
         for labels in published_labels.values()
     )
 
@@ -76,9 +80,14 @@ def main():
     revision = os.environ["GITHUB_SHA"]
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise ValueError("Invalid revision")
-    upstream = Registry(UPSTREAM)
-    index, base_digest = upstream.get("manifests/latest")
-    platforms(index)  # Reject partial upstream publication before any build.
+    lock_path = Path("runtime-deps.json")
+    subprocess.run([sys.executable, "scripts/resolve_tools.py", "--output", str(lock_path)], check=True)
+    lock_bytes = lock_path.read_bytes()
+    lock = json.loads(lock_bytes)
+    base_digest = digest(lock["base_digest"])
+    if not lock["base_image"].endswith("@" + base_digest):
+        raise ValueError("Base image and digest disagree")
+    dependency_digest = "sha256:" + hashlib.sha256(lock_bytes).hexdigest()
     current = Registry(os.environ["GITHUB_REPOSITORY"].lower())
     try:
         published, _ = current.get("manifests/latest")
@@ -96,9 +105,10 @@ def main():
         raise ValueError("Invalid build tag")
     outputs = {
         "base_digest": base_digest,
-        "base_image": "ghcr.io/" + UPSTREAM + "@" + base_digest,
+        "base_image": lock["base_image"],
+        "dependency_digest": dependency_digest,
         "build_tag": tag,
-        "changed": str(requires_build(base_digest, revision, published_labels)).lower(),
+        "changed": str(requires_build(base_digest, revision, published_labels, dependency_digest)).lower(),
     }
     print(json.dumps(outputs, indent=2))
     if os.environ.get("GITHUB_OUTPUT"):
