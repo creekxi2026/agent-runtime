@@ -53,7 +53,9 @@ docker compose logs --tail=100 runtime
 | `SHARED_CODEX_DIR` | 共享配置，`../shared-codex` |
 | `SHARED_SKILLS_DIR` | 共享技能，`../shared-skills` |
 | `CPU_LIMIT` / `MEMORY_LIMIT` | `2` / `4g` |
-| `MAX_CONCURRENT_TASKS` | `1` |
+| `MULTICA_DAEMON_MAX_CONCURRENT_TASKS` | 可选；不设置则使用 Multica 原生默认值 |
+
+并发默认不覆盖 Multica 的设置。需要指定整个 daemon 的并发上限时，在 `.env` 设置 `MULTICA_DAEMON_MAX_CONCURRENT_TASKS`；页面上的 Agent 并发限制仍独立生效。旧模板的 `MAX_CONCURRENT_TASKS` 不再使用：若原来是主动设置的限制，请将变量改为上述原生名称并保留原值；若只是复制了旧默认值 `1`，删除该行即可。替换 Compose 并修改 `.env` 后，等任务结束再执行 `docker compose up -d` 重建容器；无需重建镜像，单纯重启容器不会更新环境变量。
 
 共享 Codex 目录仅存放 `config.toml`、API-key 模式的 `auth.json`，不共享整个 `.codex`。此模式不支持 ChatGPT OAuth，不要执行 `codex login/logout`。
 

@@ -19,7 +19,8 @@ services:
       PLAYWRIGHT_WS_ENDPOINT: ${PLAYWRIGHT_WS_ENDPOINT:-}
       MULTICA_DAEMON_DEVICE_NAME: ${COMPOSE_PROJECT_NAME}
       MULTICA_AGENT_RUNTIME_NAME: ${COMPOSE_PROJECT_NAME}
-      MULTICA_DAEMON_MAX_CONCURRENT_TASKS: ${MAX_CONCURRENT_TASKS:-1}
+      # 不提供默认值；仅透传主动设置的同名变量，否则由 Multica 决定。
+      MULTICA_DAEMON_MAX_CONCURRENT_TASKS:
     volumes:
       - type: bind
         source: ${DATA_DIR:-./data}
