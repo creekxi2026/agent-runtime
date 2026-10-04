@@ -29,6 +29,25 @@ class OfficialInputsTests(unittest.TestCase):
             for call in command.call_args_list:
                 self.assertIn('APT::Update::Error-Mode=any', ' '.join(call.args[0]))
 
+    def test_native_helper_dependencies_resolve_for_both_architectures(self):
+        import sys
+        from unittest.mock import patch
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        import official_inputs
+        self.assertTrue(callable(getattr(official_inputs, 'native_helper_inputs', None)), 'Native dependency resolver missing')
+        names = ('7zip', 'android-libbacktrace', 'android-libbase', 'android-libcutils',
+                 'android-liblog', 'android-libutils', 'android-libziparchive', 'libzopfli1', 'zipalign')
+        record = lambda name: 'Package: ' + name + '\nVersion: 1.0-1\nArchitecture: all\nSHA256: ' + 'a'*64 + '\n'
+        output = '\n---PACKAGE---\n'.join(record(name) for name in names) + '\n---PACKAGE---\n'
+        with patch.object(official_inputs.subprocess, 'check_output', return_value=output) as command:
+            lock = official_inputs.native_helper_inputs('debian@sha256:' + 'a'*64)
+        self.assertEqual(set(lock), {'amd64', 'arm64'})
+        for arch in lock:
+            self.assertEqual(set(lock[arch]), set(names))
+            self.assertIn(arch, command.call_args_list[['amd64', 'arm64'].index(arch)].args[0])
+        self.assertIn('--mode native-helper', (ROOT / 'Dockerfile').read_text())
+        self.assertIn('native_helper_probe.py', (ROOT / 'tests/smoke.sh').read_text())
+
     def test_content_changes_trigger_build_without_cli_changes(self):
         import copy
         import hashlib
@@ -46,7 +65,7 @@ class OfficialInputsTests(unittest.TestCase):
                         'org.opencontainers.image.revision': 'c'*40,
                         'io.creek.runtime.dependencies': fingerprint(lock)} for arch in ['amd64','arm64']}
         self.assertFalse(requires_build(base, 'c'*40, labels, fingerprint(lock)))
-        for field in ['official_skills', 'chromium']:
+        for field in ['official_skills', 'chromium', 'native_helpers']:
             updated = copy.deepcopy(lock)
             updated[field] = {'changed': True}
             self.assertTrue(requires_build(base, 'c'*40, labels, fingerprint(updated)))

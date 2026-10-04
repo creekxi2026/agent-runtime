@@ -48,7 +48,7 @@ def validate_component(manifest, component):
     fields = {"schema_version", "component", "versions", "npm", "artifacts"}
     if component == "core":
         fields.update({"base_image", "base_digest", "base_platforms"})
-        fields.update(set(manifest) & {"official_skills", "chromium"})
+        fields.update(set(manifest) & {"official_skills", "chromium", "native_helpers"})
     if set(manifest) != fields:
         raise ValueError("Unexpected component manifest fields")
     for field, expected in zip(("versions", "npm", "artifacts"), schemas[component]):

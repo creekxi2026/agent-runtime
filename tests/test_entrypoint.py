@@ -70,6 +70,19 @@ class SharedCodexTests(unittest.TestCase):
         result = self.run_entrypoint(*command)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_private_mode_preserves_auth_and_sessions_without_shared_links(self):
+        self.env.pop('CODEX_SHARED_DIR')
+        (self.codex / 'auth.json').write_text('private-auth-fixture')
+        (self.codex / 'config.toml').write_text('private-config-fixture')
+        (self.codex / 'sessions').mkdir()
+        (self.codex / 'sessions/history').write_text('private-history')
+        self.assert_started()
+        self.assert_started()
+        self.assertFalse((self.codex / 'auth.json').is_symlink())
+        self.assertEqual((self.codex / 'auth.json').read_text(), 'private-auth-fixture')
+        self.assertEqual((self.codex / 'config.toml').read_text(), 'private-config-fixture')
+        self.assertEqual((self.codex / 'sessions/history').read_text(), 'private-history')
+
     def test_links_only_config_and_auth_and_is_idempotent(self):
         sessions = self.codex / "multica-sessions" / "task"
         sessions.mkdir(parents=True)

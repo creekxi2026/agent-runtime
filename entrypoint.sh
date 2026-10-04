@@ -2,10 +2,16 @@
 set -eu
 umask 077
 mkdir -p "$CODEX_HOME" "$HOME/workspace" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.cache" "$HOME/.cache/go-tmp"
-# Image-managed defaults live outside the persistent HOME mount. User-owned
-# names/configs win; links into the managed prefix track image upgrades.
+# Preserve custom skills; retire only obsolete image-managed links.
 managed=${AGENT_MANAGED_SKILLS_DIR:-/opt/agent-skills}
 mkdir -p "$HOME/.agents/skills" "$HOME/.playwright"
+for target in "$HOME/.agents/skills"/*; do
+  [ -L "$target" ] || continue
+  source="$managed/${target##*/}"
+  if [ "$(readlink "$target")" = "$source" ] && [ ! -f "$source/SKILL.md" ]; then
+    rm "$target"
+  fi
+done
 for source in "$managed"/*; do
   [ -f "$source/SKILL.md" ] || continue
   target="$HOME/.agents/skills/${source##*/}"

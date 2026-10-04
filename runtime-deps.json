@@ -87,6 +87,84 @@
       }
     }
   },
+  "native_helpers": {
+    "amd64": {
+      "7zip": {
+        "sha256": "b2cb210bee3be6a10230b38b8645d71846d19364b157f44fd08e1a54cae1652f",
+        "version": "25.01+dfsg-1~deb13u2"
+      },
+      "android-libbacktrace": {
+        "sha256": "6e7a92e2ef4704796c4558c1da5af78b8a037f4b3a0480f4db47e09a343f9e5b",
+        "version": "1:34.0.5-12"
+      },
+      "android-libbase": {
+        "sha256": "8a8dd5890a7555c5cc92cbf6215e533122423459eb5d677580fe186222310730",
+        "version": "1:34.0.5-12"
+      },
+      "android-libcutils": {
+        "sha256": "d906693f2acde3833f319dfbb552f2d063f2f064784734adec091d51dfa9f1c6",
+        "version": "1:34.0.5-12"
+      },
+      "android-liblog": {
+        "sha256": "cb3ed2107c9fcf2569eaf8b8400ac6e95df4e70edba35dbc29e5ffe063ec8081",
+        "version": "1:34.0.5-12"
+      },
+      "android-libutils": {
+        "sha256": "0ef68fecf54d86ea57ee53de47a40fa72d16a5d73ea6169a83a291597513e4be",
+        "version": "1:34.0.5-12"
+      },
+      "android-libziparchive": {
+        "sha256": "3a2914a8721624122890149c515df1048f1d9b212e284ea70dec762470d25dae",
+        "version": "1:34.0.5-12"
+      },
+      "libzopfli1": {
+        "sha256": "f3ed4274d4cd6a8a82ce57cf34cf4760a6373e2af9a40f4509396779d5372533",
+        "version": "1.0.3-3"
+      },
+      "zipalign": {
+        "sha256": "d01f8ecde580d694fc7e0623f9206c3d4cc50da7f6ac229fad328a5f7560d0f2",
+        "version": "1:10.0.0+r36-1.1"
+      }
+    },
+    "arm64": {
+      "7zip": {
+        "sha256": "1cee2b61a2107fedd3d8c31265171ef6fbfb86a0a995df98a6066dfca66b1982",
+        "version": "25.01+dfsg-1~deb13u2"
+      },
+      "android-libbacktrace": {
+        "sha256": "04c1dac957f1c8ddd4226517ae08cab061b9e9f788857babdcb5493f43215483",
+        "version": "1:34.0.5-12"
+      },
+      "android-libbase": {
+        "sha256": "1b1460faa12cf04611cb58ff02808608fd2e3be642b72752a189c4ab84112a20",
+        "version": "1:34.0.5-12"
+      },
+      "android-libcutils": {
+        "sha256": "683ec66783e0d54e91bee661af7f758528b2c85163d585ae936d1cfd5bf8d661",
+        "version": "1:34.0.5-12"
+      },
+      "android-liblog": {
+        "sha256": "7ce80b00c4592d0021ce2973d922f1c014fbbe33a289690732dfb556bfbbec96",
+        "version": "1:34.0.5-12"
+      },
+      "android-libutils": {
+        "sha256": "c397f2a00a5ecdd7c59bb49b22bd97729a416cdd37616e99a410f31e47f809c0",
+        "version": "1:34.0.5-12"
+      },
+      "android-libziparchive": {
+        "sha256": "fe92ec46af11b26bcb51d107d7e016fdaa9fa60186bcda7289ada0be05e67b11",
+        "version": "1:34.0.5-12"
+      },
+      "libzopfli1": {
+        "sha256": "455bcc3f802c67a2b41d5c16ffda04ebbc4167abe6c5d7201e9a4b3517d0e279",
+        "version": "1.0.3-3"
+      },
+      "zipalign": {
+        "sha256": "140289c75a489b6e2db5403bcbac62262d9cd955929c4d03fdb676f70ef0a80f",
+        "version": "1:10.0.0+r36-1.1"
+      }
+    }
+  },
   "npm": {
     "@larksuite/cli": {
       "integrity": "sha512-u6cAXLuxgfYHVAThoFA00G6lTLFPyTBxWW7KH7mP7u3cwQgLPHGjvDbU4xNm3tzoVT0jlk3Rshvxl+PAbnnFew==",

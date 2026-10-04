@@ -1,8 +1,0 @@
-# Exercise optional read-only policy in addition to the delivered writable defaults.
-services:
-  runtime:
-    volumes:
-      - type: bind
-        source: ${SHARED_CODEX_DIR}
-        target: /shared/codex
-        read_only: true

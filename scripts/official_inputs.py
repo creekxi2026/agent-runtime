@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Official skills and signed Debian Chromium inputs; network failures are fatal.
+"""Official skills and signed Debian browser/helper inputs; failures are fatal.
 
 Docker supplies Debian's archive keyring/apt verifier. Cross-architecture package
 metadata is resolved without executing foreign binaries or requiring QEMU.
@@ -21,19 +21,31 @@ def package_record(text, name, arch):
 
 
 def chromium_inputs(base_image):
+    return debian_inputs(base_image, ('chromium', 'chromium-common', 'chromium-sandbox'))
+
+
+def native_helper_inputs(base_image):
+    # Zipalign's native Android libraries and non-base dependency closure on the
+    # pinned Debian base. Base libc/libgcc/libstdc++/zlib stay base-managed.
+    return debian_inputs(base_image, ('7zip', 'android-libbacktrace', 'android-libbase',
+        'android-libcutils', 'android-liblog', 'android-libutils',
+        'android-libziparchive', 'libzopfli1', 'zipalign'))
+
+
+def debian_inputs(base_image, names):
     result = {}
     for arch in ('amd64', 'arm64'):
         # Native resolver architecture is independent from requested apt metadata.
         output = subprocess.check_output([
             'docker', 'run', '--rm', '--user', '0:0', '--entrypoint', 'sh', base_image,
             '-ec', 'apt-get -o APT::Architecture="$1" -o APT::Update::Error-Mode=any update >&2; '
-            'for p in chromium chromium-common chromium-sandbox; do '
+            'for p in ' + ' '.join(names) + '; do '
             'apt-cache -o APT::Architecture="$1" --no-all-versions show "$p"; '
             'printf "\\n---PACKAGE---\\n"; done', 'resolve', arch,
         ], text=True, timeout=180)
         records = output.split('\n---PACKAGE---\n')
         result[arch] = {name: package_record(records[i].strip(), name, arch)
-                        for i, name in enumerate(('chromium', 'chromium-common', 'chromium-sandbox'))}
+                        for i, name in enumerate(names)}
     return result
 
 

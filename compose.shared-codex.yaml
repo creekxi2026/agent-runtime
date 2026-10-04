@@ -1,0 +1,12 @@
+# Optional API-key configuration sharing; sessions stay in private HOME.
+services:
+  runtime:
+    environment:
+      CODEX_SHARED_DIR: /shared/codex
+    volumes:
+      - type: bind
+        source: ${SHARED_CODEX_DIR:?Set SHARED_CODEX_DIR in .env}
+        target: /shared/codex
+        read_only: true
+        bind:
+          create_host_path: false

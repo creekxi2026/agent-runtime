@@ -41,6 +41,8 @@ RUN --mount=type=bind,source=scripts,target=/tmp/install-scripts \
     PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install-scripts/install_official.py \
       --mode chromium --manifest /tmp/core.json --arch "${TARGETARCH}" \
     && PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install-scripts/install_official.py \
+      --mode native-helper --manifest /tmp/core.json --arch "${TARGETARCH}" \
+    && PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install-scripts/install_official.py \
       --mode skills --manifest /tmp/core.json --arch "${TARGETARCH}" \
     && chmod -R go-w /opt/agent-skills \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*

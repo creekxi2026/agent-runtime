@@ -11,7 +11,15 @@ shared=$(mktemp -d)
 export SHARED_CODEX_DIR="$shared/codex"
 reader_a=''
 reader_b=''
-compose() { p=$1; shift; DATA_DIR="$shared/$p-home" docker compose -f compose.yaml -f tests/compose.yaml -f tests/compose.readonly.yaml --env-file runtime.env.example -p "$p" "$@"; }
+shared_mode=false
+compose() {
+  p=$1; shift
+  if [ "$shared_mode" = true ]; then
+    HOME_DIR="$shared/$p-home" docker compose -f compose.yaml -f tests/compose.yaml -f compose.shared-codex.yaml --env-file runtime.env.example -p "$p" "$@"
+  else
+    HOME_DIR="$shared/$p-home" docker compose -f compose.yaml -f tests/compose.yaml --env-file runtime.env.example -p "$p" "$@"
+  fi
+}
 cleanup() {
   if [ -n "$reader_a" ]; then docker rm -f "$reader_a" >/dev/null 2>&1 || true; fi
   if [ -n "$reader_b" ]; then docker rm -f "$reader_b" >/dev/null 2>&1 || true; fi
@@ -96,6 +104,11 @@ for mode in -lc -ic -ilc; do
     miniprogram-ci --help >/dev/null
   '
 done
+# sign() unconditionally chmods its helper. The supported Compose rootfs is
+# writable; read-only rootfs tool-discovery above cannot exercise that contract.
+docker run --rm -i --network none --user 1000:1000 --cap-drop ALL \
+  --security-opt no-new-privileges --tmpfs /home/agent:uid=1000,gid=1000,mode=700 \
+  --entrypoint python3 "$IMAGE" - < tests/native_helper_probe.py
 compose "$project-a" run --rm runtime sh -ec 'printf a > /home/agent/workspace/tenant-a'
 compose "$project-b" run --rm runtime sh -ec 'test ! -e /home/agent/workspace/tenant-a; printf b > /home/agent/workspace/tenant-b'
 compose "$project-a" run --rm runtime sh -ec 'test -f /home/agent/workspace/tenant-a; test ! -e /home/agent/workspace/tenant-b'
@@ -103,23 +116,37 @@ compose "$project-a" run --rm runtime sh -ec 'test -f /home/agent/workspace/tena
 compose "$project-a" run --rm -T runtime python3 - install < tests/home_fixture.py
 compose "$project-a" run --rm -T runtime python3 - check < tests/home_fixture.py
 compose "$project-b" run --rm -T runtime python3 - isolated < tests/home_fixture.py
-# The delivered Compose permits shared writes, still under agent identity.
-DATA_DIR="$shared/$project-a-home" docker compose -f compose.yaml -f tests/compose.yaml \
-  --env-file runtime.env.example -p "$project-a" run --rm runtime sh -ec '
-    test "$(id -u)" = 1000
-    printf writable > /shared/codex/write-probe
-    rm /shared/codex/write-probe
-  '
+# Default startup leaves auth private across recreation and tenants.
+compose "$project-a" run --rm runtime sh -ec '
+  test -z "${CODEX_SHARED_DIR:-}"; test ! -e /shared/codex
+  printf private-auth-fixture > "$CODEX_HOME/auth.json"
+  mkdir -p "$CODEX_HOME/sessions"; printf private-session > "$CODEX_HOME/sessions/history"
+'
+compose "$project-a" run --rm runtime sh -ec '
+  test ! -L "$CODEX_HOME/auth.json"
+  test "$(cat "$CODEX_HOME/auth.json")" = private-auth-fixture
+  test "$(cat "$CODEX_HOME/sessions/history")" = private-session
+'
+compose "$project-b" run --rm runtime sh -ec 'test ! -e "$CODEX_HOME/auth.json"; test ! -e "$CODEX_HOME/sessions/history"'
+# Replace the intentionally non-JSON persistence marker with an invalid API key fixture.
+compose "$project-a" run --rm runtime sh -ec 'printf "{\"auth_mode\":\"apikey\",\"OPENAI_API_KEY\":\"INVALID-TEST-ONLY\"}\n" > "$CODEX_HOME/auth.json"'
+compose "$project-a" run --rm runtime sh -ec 'mkdir -p "$HOME/.agents/skills/runtime-shared-smoke"; printf "%s\n" "---" "name: runtime-shared-smoke" "description: Shared smoke revision-before" "---" > "$HOME/.agents/skills/runtime-shared-smoke/SKILL.md"'
+compose "$project-a" run --rm -T runtime python3 - before < tests/codex_skills_probe.py
 # Real local browser E2E uses the actual UID and native global defaults.
 compose "$project-a" run --rm -T runtime python3 - < tests/local_browser_probe.py
 compose "$project-a" run --rm -T runtime python3 - persist-write < tests/local_browser_probe.py
 compose "$project-a" run --rm -T runtime python3 - persist-check < tests/local_browser_probe.py
 compose "$project-b" run --rm -T runtime python3 - isolated < tests/local_browser_probe.py
 compose "$project-a" run --rm -T runtime python3 - < tests/task_credentials_probe.py
+# Opt in only after the private-HOME/browser probes.
+shared_mode=true
 # Keep both user containers alive while one host-side update reaches both.
 reader_a=$(compose "$project-a" run --no-deps -d runtime sleep 300)
 reader_b=$(compose "$project-b" run --no-deps -d runtime sleep 300)
 for reader in "$reader_a" "$reader_b"; do
+  timeout 30 docker exec --user 1000:1000 "$reader" sh -ec '
+    while [ ! -L "$CODEX_HOME/config.toml" ] || [ ! -L "$CODEX_HOME/auth.json" ]; do sleep 0.1; done
+  '
   docker exec --user 1000:1000 "$reader" sh -ec 'mkdir -p "$HOME/.agents/skills/runtime-shared-smoke"; printf "%s\n" "---" "name: runtime-shared-smoke" "description: Shared smoke revision-before" "---" > "$HOME/.agents/skills/runtime-shared-smoke/SKILL.md"'
   timeout 90 docker exec --user 1000:1000 -i "$reader" python3 - before < tests/codex_skills_probe.py
 done
@@ -143,4 +170,4 @@ else
   grep -qi 'not authenticated' "$log"
 fi
 rm "$log"
-printf '%s\n' 'PASS: offline tools, Go race/CGO, Python venv, persistent private HOME/tools, UID1000/caps-zero, official Codex skills discovery, local Chromium navigation/PNG/concurrent idle cleanup, shared Codex atomic updates (not authentication), writable and read-only Codex policies, missing-auth rejection.'
+printf '%s\n' 'PASS: offline tools, Go race/CGO, Python venv, persistent private HOME/tools, UID1000/caps-zero, official Codex skills discovery, local Chromium navigation/PNG/concurrent idle cleanup, shared Codex atomic updates (not authentication), private auth and optional read-only Codex policy, missing-auth rejection.'

@@ -1,0 +1,52 @@
+# Optional trusted-container download caches; private installed tools stay in HOME.
+services:
+  runtime:
+    environment:
+      NPM_CONFIG_CACHE: /shared/caches/npm
+      GOMODCACHE: /shared/caches/go-mod
+      UV_CACHE_DIR: /shared/caches/uv
+      UV_LINK_MODE: copy
+    volumes:
+      - type: bind
+        source: ${SHARED_CACHE_DIR:-../shared/caches}
+        target: /shared/caches
+        read_only: false
+        bind:
+          create_host_path: true
+    # Compose entrypoint replaces image CMD: retain the published daemon command.
+    command: [multica, daemon, start, --foreground, --no-auto-update, --no-auto-reload, --workspaces-root, /home/agent/workspace]
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        /usr/bin/python3 -I - <<'PY'
+        import os, stat
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        shared = os.open('/shared', flags)
+        root = os.open('caches', flags, dir_fd=shared)
+        try:
+            names = ('npm', 'go-mod', 'uv')
+            for name in names:
+                try:
+                    mode = os.stat(name, dir_fd=root, follow_symlinks=False).st_mode
+                except FileNotFoundError:
+                    continue
+                if not stat.S_ISDIR(mode):
+                    raise SystemExit('Refusing non-directory cache: ' + name)
+            for name in names:
+                try:
+                    os.mkdir(name, 0o750, dir_fd=root)
+                except FileExistsError:
+                    pass
+                fd = os.open(name, flags, dir_fd=root)
+                try:
+                    os.fchown(fd, 1000, 1000)
+                    os.fchmod(fd, 0o750)
+                finally:
+                    os.close(fd)
+        finally:
+            os.close(root)
+            os.close(shared)
+        PY
+        exec /usr/local/bin/agent-bootstrap "$$@"
+      - shared-cache-bootstrap

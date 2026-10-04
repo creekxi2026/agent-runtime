@@ -1,10 +1,8 @@
-# 启动：docker compose up -d
-# 先替换此 Compose，再拉取最新镜像并重建；DATA_DIR 保持原宿主机目录。
 name: ${COMPOSE_PROJECT_NAME:?请在 .env 填写唯一实例名}
 services:
   runtime:
     init: false
-    image: ghcr.io/creekxi2026/agent-runtime:${IMAGE_TAG:-latest}
+    image: ${RUNTIME_IMAGE:-ghcr.io/creekxi2026/agent-runtime:latest}
     # 仅入口初始化使用 root；随后降为 1000:1000，并清除全部 capabilities。
     user: "0:0"
     working_dir: /home/agent
@@ -12,29 +10,20 @@ services:
       MULTICA_SERVER_URL: ${MULTICA_SERVER_URL:-}
       MULTICA_APP_URL: ${MULTICA_APP_URL:-}
       MULTICA_BOOTSTRAP_TOKEN: ${MULTICA_BOOTSTRAP_TOKEN:-}
-      CODEX_SHARED_DIR: /shared/codex
       LARK_APP_ID: ${LARK_APP_ID:-}
       LARK_APP_SECRET: ${LARK_APP_SECRET:-}
       LARK_BRAND: ${LARK_BRAND:-feishu}
-      PLAYWRIGHT_WS_ENDPOINT: ${PLAYWRIGHT_WS_ENDPOINT:-}
       MULTICA_DAEMON_DEVICE_NAME: ${COMPOSE_PROJECT_NAME}
       MULTICA_AGENT_RUNTIME_NAME: ${COMPOSE_PROJECT_NAME}
       # 不提供默认值；仅透传主动设置的同名变量，否则由 Multica 决定。
       MULTICA_DAEMON_MAX_CONCURRENT_TASKS:
     volumes:
       - type: bind
-        source: ${DATA_DIR:-./data}
+        source: ${HOME_DIR:-./home}
         target: /home/agent
         read_only: false
         bind:
           create_host_path: true
-      - type: bind
-        source: ${SHARED_CODEX_DIR:?请在 .env 设置共享 Codex 专用配置目录}
-        target: /shared/codex
-        read_only: false
-        bind:
-          create_host_path: false
-    # 共享 Codex 配置可写；skills 和用户工具随私有 HOME 持久化。
     read_only: false
     tmpfs: [/tmp]
     cap_drop: [ALL]

@@ -30,7 +30,7 @@ class DependencyLockTests(unittest.TestCase):
             self.assertIn('name: runtime-deps', text)
             self.assertIn('DEPENDENCY_DIGEST:', text)
             self.assertLess(text.index('run: python3 scripts/verify_dependency_lock.py'), text.index('uses: docker/build-push-action@'))
-            self.assertIn('tests/remote-browser.sh', text)
+            self.assertIn('sh tests/smoke.sh', text)
 
 
 if __name__ == '__main__':

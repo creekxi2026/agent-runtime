@@ -25,8 +25,6 @@ class ComposeConcurrencyTests(unittest.TestCase):
             env_file = Path(directory) / "runtime.env"
             contents = (ROOT / "runtime.env.example").read_text() if sample else (
                 "COMPOSE_PROJECT_NAME=concurrency-test\n"
-                "SHARED_CODEX_DIR=./shared-codex\n"
-                "SHARED_SKILLS_DIR=./shared-skills\n"
             )
             env_file.write_text(contents + "\n" + extra)
             env = {key: os.environ[key] for key in ("PATH", "HOME") if key in os.environ}

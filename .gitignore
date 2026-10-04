@@ -17,3 +17,6 @@ node_modules/
 __pycache__/
 .build-inputs/
 layer-delta.json
+migration-records/
+home/
+local.env

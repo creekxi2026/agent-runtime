@@ -44,7 +44,7 @@ def chromium_pids():
     return found
 
 def await_gone(pids):
-    for _ in range(100):
+    for _ in range(400):
         if not (pids & chromium_pids()): return
         time.sleep(.1)
     raise AssertionError('Session Chromium processes survived idle deadline: ' + str(pids & chromium_pids()))
@@ -79,11 +79,12 @@ baseline = chromium_pids()
 assert not baseline, baseline
 try:
     # No --browser, --config or executable flag: exercise native HOME defaults.
-    cli('idle-a', 'open', url, '--idle-timeout=4000')
+    # Allow emulated-architecture startup before testing native idle reclamation.
+    cli('idle-a', 'open', url, '--idle-timeout=15000')
     assert 'Agent Runtime fixture' in cli('idle-a', 'eval', 'document.title')
     a = chromium_pids()
     assert a
-    cli('idle-b', 'open', 'about:blank', '--idle-timeout=30000')
+    cli('idle-b', 'open', 'about:blank', '--idle-timeout=60000')
     b = chromium_pids() - a
     assert b
     with concurrent.futures.ThreadPoolExecutor() as pool:

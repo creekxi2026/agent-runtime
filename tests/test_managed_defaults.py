@@ -44,5 +44,35 @@ class ManagedDefaultsTests(unittest.TestCase):
                 self.assertEqual((custom / 'SKILL.md').read_text(), 'custom')
                 self.assertEqual(browser.read_text(), 'custom config')
 
+    def test_removed_and_renamed_official_links_retire_without_touching_custom_names(self):
+        import shutil
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            managed = root / 'managed'
+            old = managed / 'official-old'
+            old.mkdir(parents=True)
+            (old / 'SKILL.md').write_text('old')
+            home = root / 'home'
+            skills = home / '.agents/skills'
+            skills.mkdir(parents=True)
+            custom = skills / 'custom'
+            custom.mkdir()
+            (custom / 'keep').write_text('user data')
+            (skills / 'custom-link').symlink_to(root / 'missing-user-skill')
+            (skills / 'renamed-custom').symlink_to(managed / 'different-name')
+            env = {**os.environ, 'HOME': str(home), 'CODEX_HOME': str(home / '.codex'),
+                   'AGENT_MANAGED_SKILLS_DIR': str(managed)}
+            subprocess.run(['sh', 'entrypoint.sh', 'true'], env=env, check=True)
+            old.rename(managed / 'official-new')
+            subprocess.run(['sh', 'entrypoint.sh', 'true'], env=env, check=True)
+            self.assertFalse((skills / 'official-old').is_symlink())
+            self.assertTrue((skills / 'official-new/SKILL.md').is_file())
+            shutil.rmtree(managed / 'official-new')
+            subprocess.run(['sh', 'entrypoint.sh', 'true'], env=env, check=True)
+            self.assertFalse((skills / 'official-new').is_symlink())
+            self.assertEqual((custom / 'keep').read_text(), 'user data')
+            self.assertTrue((skills / 'custom-link').is_symlink())
+            self.assertTrue((skills / 'renamed-custom').is_symlink())
+
 if __name__ == '__main__':
     unittest.main()
