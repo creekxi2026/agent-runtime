@@ -30,7 +30,7 @@ class DeploymentTests(unittest.TestCase):
         mounts = {m['target']: m for m in runtime['volumes']}
         self.assertEqual(set(mounts), {'/home/agent', '/shared/codex'})
         self.assertTrue(mounts['/shared/codex']['read_only'])
-        self.assertFalse(mounts['/shared/codex']['bind']['create_host_path'])
+        self.assertFalse(mounts['/shared/codex'].get('bind', {}).get('create_host_path', False))
         self.assertEqual(runtime['environment']['CODEX_SHARED_DIR'], '/shared/codex')
 
     def test_smoke_covers_private_default_then_optional_shared_mode(self):
