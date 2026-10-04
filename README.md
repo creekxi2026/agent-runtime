@@ -1,5 +1,7 @@
 # Agent Runtime
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 A Docker-based development runtime for Codex and Multica, with a persistent private HOME for each instance. Multiple agents belonging to the same trusted user can work in one container.
 
 - **Ready-to-use tools:** Codex, Multica, Lark CLI, miniprogram-ci, Playwright CLI and Chromium, plus official Playwright and Lark skills.
