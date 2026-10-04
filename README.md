@@ -1,12 +1,23 @@
 # Agent Runtime
 
-Codex / Multica 开发容器，支持 `linux/amd64`、`linux/arm64`。每个实例使用私有 HOME；同一可信用户的多个 Agent 可共用一个容器。
+A Docker-based development runtime for Codex and Multica, with a persistent private HOME for each instance. Multiple agents belonging to the same trusted user can work in one container.
 
-镜像：`ghcr.io/creekxi2026/agent-runtime:latest`。内置 Codex、Multica、Lark CLI、miniprogram-ci、Playwright CLI / Chromium、官方 Playwright / Lark skills，以及 Go、Node/npm/pnpm、Python/uv、C/C++、Git、gh、SSH、rsync。项目依赖按锁文件另行安装；不含业务代码、Docker/Podman 或数据库服务端。
+- **Ready-to-use tools:** Codex, Multica, Lark CLI, miniprogram-ci, Playwright CLI and Chromium, plus official Playwright and Lark skills.
+- **Development toolchain:** Go, Node.js/npm/pnpm, Python/uv, C/C++, Git, gh, SSH and rsync.
+- **Persistent user state:** projects, credentials, sessions, user-installed tools and custom skills stay in HOME across container recreation.
+- **Optional sharing:** download caches and read-only Codex API-key configuration, without sharing HOME.
 
-## 准备配置
+Image: `ghcr.io/creekxi2026/agent-runtime:latest` for `linux/amd64` and `linux/arm64`. Install project dependencies separately from their lockfiles. The image does not include application code, Docker/Podman or database servers.
 
-需要 Docker Engine、Compose v2，以及可访问的 Multica 和模型服务。新实例只需两个文件：
+[Quick Start](#quick-start) · [Storage](#storage) · [Configuration](#configuration) · [Usage](#usage) · [Updates](#updates) · [Development](#development)
+
+## Quick Start
+
+You need Docker Engine, Docker Compose v2, and access to Multica and a model service.
+
+### 1. Prepare an instance
+
+A new instance needs only the Compose file and environment file:
 
 ```bash
 mkdir -p agent-runtime/user01
@@ -17,33 +28,77 @@ curl -fL "$SOURCE/runtime.env.example" -o .env
 chmod 600 .env
 ```
 
-编辑 `.env`，将 `COMPOSE_PROJECT_NAME` 改为**唯一实例名**；`RUNTIME_IMAGE` 可指定镜像。默认连接 Multica Cloud，自托管填写服务地址。先完成下面的存储选择，再登录启动。
+Edit `.env` and give `COMPOSE_PROJECT_NAME` a **unique instance name**. Keep credentials out of Git and chat; quote real secret values with single quotes in `.env`. Do not overwrite an existing credential-bearing environment file.
 
-## 先选存储，再启动
+### 2. Choose storage before logging in
 
-默认选 named volume（命名卷），由 Docker 管理；只有需要直接访问宿主机文件时才选 bind（目录挂载）。相对路径以首个 Compose 文件所在目录为基准。
+The default is a private Docker-managed HOME volume, with no shared mounts. If that suits your instance, continue below. For a host-directory HOME, shared caches or shared Codex credentials, **complete [Storage](#storage) first**, including the override downloads and `COMPOSE_FILE` setting. Login commands initialize the selected HOME; changing storage later does not migrate those files.
 
-| 数据 | 容器挂载点 | 默认 / 可选来源 |
+### 3. Authenticate
+
+**Multica:** the default connects to Multica Cloud. If `MULTICA_BOOTSTRAP_TOKEN` is set, skip interactive Multica login; daemon startup applies the token and configured URLs.
+
+Otherwise, for a self-hosted instance, set the endpoints **before the first interactive login**. Replace these example URLs with the corresponding `.env` values; omit `app_url` if no application URL is configured. The `.env` URLs are applied automatically only when starting the daemon, not by the interactive login command.
+
+```bash
+docker compose run --rm runtime multica config set server_url 'https://multica-api.example.com'
+docker compose run --rm runtime multica config set app_url 'https://multica.example.com'
+```
+
+Without a bootstrap token, log in to Multica:
+
+```bash
+docker compose run --rm runtime multica login
+```
+
+**Codex:** log in only when using private Codex credentials. **Skip this command in shared Codex mode**, and do not run `codex login` or `codex logout` against shared credentials. For private API-key authentication, `codex login --with-api-key` reads the key from standard input.
+
+```bash
+docker compose run --rm runtime codex login
+```
+
+### 4. Start the runtime
+
+```bash
+docker compose up -d
+docker compose logs --tail=100 runtime
+```
+
+The daemon requires Multica authentication and refuses to start without it. Model access must also be configured for the tasks you intend to run; starting the container alone does not verify model authentication.
+
+## Storage
+
+Relative bind paths are resolved from the directory containing the first Compose file. Use named volumes by default; choose a bind mount when you need direct access to host files.
+
+| Data | Source | Container path | Access |
+| --- | --- | --- | --- |
+| Private HOME | Named volume `<COMPOSE_PROJECT_NAME>-home`, or `HOME_VOLUME`; optional bind via `HOME_DIR` | `/home/agent` | Read/write |
+| Download caches | Private HOME by default; optional volume `agent-runtime-download-cache` or bind via `SHARED_CACHE_DIR` | `/shared/caches` when enabled | Read/write |
+| Shared Codex configuration | Optional dedicated directory via `SHARED_CODEX_DIR` | `/shared/codex` | Read-only |
+
+HOME holds configuration, credentials, sessions, `workspace`, user-installed tools and custom skills. **Never reuse HOME across independent instances**, including when setting `HOME_VOLUME`. Image-managed tools live under `/opt`; the HOME volume uses `nocopy`, so it does not copy image HOME contents into persistent storage.
+
+### Select overrides
+
+Download each required override from the same `SOURCE` URL used in Quick Start and place it beside `compose.yaml`. For example:
+
+```bash
+curl -fL "$SOURCE/compose.bind-home.yaml" -o compose.bind-home.yaml
+```
+
+Then set the following values in `.env`:
+
+| Storage choice | Required override files | Environment settings |
 | --- | --- | --- |
-| 私有 HOME | `/home/agent`，可写 | 默认命名卷 `<COMPOSE_PROJECT_NAME>-home`，可用 `HOME_VOLUME` 指定；bind 用 `HOME_DIR` |
-| 下载缓存 | `/shared/caches`，可写 | 默认不挂载，缓存留在 HOME；可选命名卷 `agent-runtime-download-cache`，或 bind `SHARED_CACHE_DIR` |
-| 共享 Codex 配置 | `/shared/codex`，只读 | 默认不挂载；可选专用目录 `SHARED_CODEX_DIR` |
+| Default private HOME volume | None | Leave `COMPOSE_FILE` unset |
+| Private HOME bind | [compose.bind-home.yaml](compose.bind-home.yaml) | `HOME_DIR=./home`; `COMPOSE_FILE=compose.yaml:compose.bind-home.yaml` |
+| Shared cache volume | [compose.shared-cache.yaml](compose.shared-cache.yaml) | `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml`; optionally set `SHARED_CACHE_VOLUME` |
+| Shared cache bind | [compose.shared-cache.yaml](compose.shared-cache.yaml), then [compose.shared-cache.bind.yaml](compose.shared-cache.bind.yaml) | `SHARED_CACHE_DIR=../shared/caches`; `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.shared-cache.bind.yaml` |
+| Read-only shared Codex | [compose.shared-codex.yaml](compose.shared-codex.yaml) | `SHARED_CODEX_DIR=../shared-codex`; `COMPOSE_FILE=compose.yaml:compose.shared-codex.yaml` |
 
-HOME 保存配置、凭据、sessions、项目 `workspace`、后装工具和自定义 skills。不同实例不要复用 HOME；自定义 `HOME_VOLUME` 也须各不相同。镜像工具位于 `/opt`，HOME 命名卷使用 `nocopy`，不会固化镜像工具。
+**Ordering matters:** put `compose.yaml` first and each bind override after the corresponding named-volume configuration. On Windows, use `;` instead of `:` as the `COMPOSE_FILE` separator. Once set, use ordinary `docker compose` commands for login, startup, shells and updates; do not supply a separate `-f` list that omits your overrides.
 
-### 选择 override
-
-从上面的 `SOURCE` 地址下载所需文件，放在 `compose.yaml` 旁，再编辑 `.env` 的 `COMPOSE_FILE`。基础文件必须在前，bind override 必须在对应命名卷配置之后；Windows 用 `;` 代替 `:`。设置后，登录、启动、shell、更新均使用普通 `docker compose` 命令，不要另加一组遗漏 override 的 `-f`。
-
-| 选择 | 下载的 override | `.env` 设置 |
-| --- | --- | --- |
-| 默认私有 HOME 命名卷 | 无 | 不设置 `COMPOSE_FILE` |
-| 私有 HOME 目录 | [compose.bind-home.yaml](compose.bind-home.yaml) | `HOME_DIR=./home`；`COMPOSE_FILE=compose.yaml:compose.bind-home.yaml` |
-| 共享下载缓存命名卷 | [compose.shared-cache.yaml](compose.shared-cache.yaml) | `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml`；按需指定 `SHARED_CACHE_VOLUME` |
-| 共享下载缓存目录 | 上一行文件及 [compose.shared-cache.bind.yaml](compose.shared-cache.bind.yaml) | `SHARED_CACHE_DIR=../shared/caches`；`COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.shared-cache.bind.yaml` |
-| 只读共享 Codex | [compose.shared-codex.yaml](compose.shared-codex.yaml) | `SHARED_CODEX_DIR=../shared-codex`；`COMPOSE_FILE=compose.yaml:compose.shared-codex.yaml` |
-
-可组合使用，例如 HOME 和缓存都选 bind，并启用共享 Codex：
+Choices can be combined. For a HOME bind, cache bind and shared Codex directory, download all four overrides and use:
 
 ```dotenv
 COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.shared-codex.yaml:compose.bind-home.yaml:compose.shared-cache.bind.yaml
@@ -52,79 +107,85 @@ SHARED_CACHE_DIR=../shared/caches
 SHARED_CODEX_DIR=../shared-codex
 ```
 
-使用 HOME bind 时必须启用 `compose.bind-home.yaml`；仅设置 `HOME_DIR` 不会切换或迁移存储。
+Setting `HOME_DIR` alone does not switch storage: `compose.bind-home.yaml` must be enabled. Neither changing a variable nor adding an override migrates existing data.
 
-### 共享边界
+### Shared download caches
 
-- **下载缓存：** 仅共享 npm、Go module、uv 缓存；全局工具、`node_modules`、venv、Go build cache 和凭据仍私有。入口只初始化 `npm`、`go-mod`、`uv` 三个目录为 `1000:1000` / `0750`，不递归修改内容；非目录或符号链接会拒绝启动。uv 使用 `copy` 避免跨文件系统硬链接，清理 uv 缓存时不要同时安装依赖。
-- **可信范围：** 同一缓存卷名或 bind 来源的容器可读取、修改彼此缓存，依赖包可能含私有源码。仅用于相互信任、相同 UID 的 Linux 容器；不要挂载或复制 Mac 缓存，不要在缓存根放凭据。
-- **Codex：** 先创建专用目录，放入 `config.toml` 和 `auth.json`（[配置模板](shared-codex/config.toml.example)、[认证模板](shared-codex/auth.json.example)），允许 UID/GID `1000:1000` 读取。缺失目录不会自动创建。只链接这两个文件，**不要共享整个 `.codex`**；sessions/cache 仍在私有 HOME。原私有文件备份为 `.before-shared`，备份冲突时拒绝覆盖。
-- **共享 Key：** 所有参与实例都能读取共同 Key，只读不代表保密。仅支持 API Key，不支持需刷新写入的 ChatGPT OAuth；共享模式不执行 `codex login/logout`。原子替换共享文件可供后续读取，不保证在途任务热更新，共享默认配置也不是强制策略。
+Only npm, Go module and uv download caches are shared. Global tools, `node_modules`, virtual environments, Go build caches and credentials remain private. Startup initializes only the `npm`, `go-mod` and `uv` directories to UID/GID `1000:1000` with mode `0750`; it does not recursively change their contents and rejects symlinks or non-directory entries. uv uses `copy` to avoid cross-filesystem hard links. Do not clean the uv cache while installing dependencies.
 
-## 登录与启动
+Share only among mutually trusted Linux containers using the same UID. Containers using the same cache volume name or bind source can read and modify each other's caches, which may contain private source code. Do not mount or copy macOS caches, or store credentials in the cache root.
 
-仅自托管实例：首次交互登录前，先将地址替换为 `.env` 的对应值执行；未配置页面地址时跳过第二行。启动 daemon 才会自动写入 `.env` 地址。
+### Shared Codex credentials
 
-```bash
-docker compose run --rm runtime multica config set server_url '你的服务地址'
-docker compose run --rm runtime multica config set app_url '你的页面地址'
-```
+Before any login or startup command, create a **dedicated directory** containing `config.toml` and `auth.json`, readable by UID/GID `1000:1000`. Use the [configuration template](shared-codex/config.toml.example) and [authentication template](shared-codex/auth.json.example) as a starting point. A missing source directory is not created automatically.
 
-未填写 `MULTICA_BOOTSTRAP_TOKEN` 时，交互登录 Multica；已填写则跳过：
+Only these two files are linked into private Codex state. **Do not share the entire `.codex` directory**; sessions and caches stay in private HOME. Existing private files are backed up with the `.before-shared` suffix; startup refuses to overwrite conflicting backups.
 
-```bash
-docker compose run --rm runtime multica login
-```
+This mode supports **API keys only**, not ChatGPT OAuth credentials that require refresh writes. All participating instances can read the shared key; read-only access is not confidentiality. Skip `codex login/logout`. Atomic replacement of the shared files makes them available to subsequent reads, but does not guarantee live updates for in-flight tasks. Shared defaults are not an enforced policy.
 
-仅私有 Codex 认证模式执行以下登录；**共享 Codex 模式跳过**。API Key 可用 `codex login --with-api-key` 从标准输入读取，真实凭据不要提交 Git 或发到聊天。
+## Configuration
 
-```bash
-docker compose run --rm runtime codex login
-```
+See [runtime.env.example](runtime.env.example) for available settings and [compose.yaml](compose.yaml) for the base deployment contract.
 
-最后启动；没有 Multica 登录状态时 daemon 会拒绝启动：
+| Setting | Purpose / default |
+| --- | --- |
+| `COMPOSE_PROJECT_NAME` | Required unique instance identity |
+| `RUNTIME_IMAGE` | Image selection; defaults to `ghcr.io/creekxi2026/agent-runtime:latest` |
+| `HOME_VOLUME` | Private volume name; defaults to `<COMPOSE_PROJECT_NAME>-home` |
+| `CPU_LIMIT`, `MEMORY_LIMIT` | Defaults: `2` CPUs and `4g` memory |
+| `MULTICA_SERVER_URL`, `MULTICA_APP_URL` | Leave blank for Multica Cloud; set for self-hosting |
+| `MULTICA_BOOTSTRAP_TOKEN` | Optional alternative to interactive Multica login |
+| `MULTICA_DAEMON_MAX_CONCURRENT_TASKS` | Optional daemon-wide limit; unset uses Multica's native default, independently of the UI's per-Agent concurrency limit |
+| `LARK_APP_ID`, `LARK_APP_SECRET`, `LARK_BRAND` | Optional Lark application initialization; brand defaults to `feishu` |
 
-```bash
-docker compose up -d
-docker compose logs --tail=100 runtime
-```
+The startup entrypoint briefly uses root to initialize private directories, then runs the application as UID/GID `1000:1000` with capabilities cleared. Compose relaxes seccomp/AppArmor for Codex's inner sandbox, but does not enable privileged mode or mount the Docker socket. This is **not a strong isolation boundary for untrusted tenants**.
 
-## 日常使用与权限
+## Usage
+
+Open a shell as the application user:
 
 ```bash
 docker compose exec --user 1000:1000 runtime bash
 ```
 
-应用以 UID/GID `1000:1000` 运行；启动入口短暂使用 root 初始化私有目录，然后降权并清除 capabilities。控制台和 `docker compose exec` 可能默认 root，诊断和安装后装工具时显式使用上面的 UID，避免留下 root 所有的私有文件。
+Container consoles and `docker compose exec` may otherwise default to root. Use the explicit UID for diagnostics and user-tool installation to avoid root-owned files in HOME.
 
-- 后装工具可用 `npm install -g 包名`、`uv tool install 包名`，保存在 HOME；用户命令目录为 `~/.local/bin`。Multica 的 Codex 路径由 `MULTICA_CODEX_PATH` 指定。
-- 官方 skills 从 `/opt/agent-skills` 链接到 `~/.agents/skills`；自定义放在 `~/.agents/skills/技能名/SKILL.md`。升级保留自定义内容。Multica 的 `Copy from a runtime` 是快照。
-- 浏览器使用 `playwright-cli -s=任务名 open about:blank`。并发任务各用独立 session，结束只关闭自己的 session，不用 `close-all` / `kill-all`。默认空闲超时 1 小时；`state-save` / `state-load` 的状态文件含敏感会话数据，应留在私有 HOME。
-- 飞书应用配置可通过 `.env` 初始化；用户资源另需 `docker compose run --rm runtime lark-cli auth login --domain docs --domain drive`。小程序预览/上传另需项目 AppID、上传私钥及微信侧配置，不支持只读根文件系统。
+- **User tools:** install with `npm install -g package-name` or `uv tool install package-name`; these installations persist in HOME. User command paths include `~/.local/bin`. `MULTICA_CODEX_PATH` selects the Codex executable used by Multica.
+- **Skills:** official skills are linked from `/opt/agent-skills` into `~/.agents/skills`. Put custom skills in `~/.agents/skills/skill-name/SKILL.md`; updates preserve custom content. Multica's `Copy from a runtime` creates a snapshot, not a live link.
+- **Browser sessions:** use `playwright-cli -s=task-name open about:blank`. Give concurrent tasks separate sessions and close only your own session, not `close-all` or `kill-all`. The default idle timeout is one hour. Files from `state-save` / `state-load` contain sensitive session data and belong in private HOME.
+- **Lark user resources:** `.env` can initialize application credentials, but user authorization additionally requires `docker compose run --rm runtime lark-cli auth login --domain docs --domain drive`.
+- **WeChat Mini Programs:** preview/upload requires a project AppID, an upload private key and the corresponding WeChat-side configuration. A read-only root filesystem is not supported.
 
-资源默认 `CPU_LIMIT=2`、`MEMORY_LIMIT=4g`。`MULTICA_DAEMON_MAX_CONCURRENT_TASKS` 未设置时使用 Multica 原生默认值，与页面上的 Agent 并发限制独立。完整配置见 [runtime.env.example](runtime.env.example) 和 [compose.yaml](compose.yaml)。Compose 放宽 seccomp/AppArmor 以支持 Codex 内层沙箱，不启用 privileged 或 Docker socket；不适合不可信多租户强隔离。
+## Updates
 
-## 更新与保留数据
-
-避开运行任务，备份 HOME 和 `.env`，保留相同实例名、HOME 来源及 `COMPOSE_FILE` 后执行：
+Wait for running tasks to finish and back up HOME and `.env`. Keep the **same instance name, HOME backing store and `COMPOSE_FILE`** when updating:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-重建复用 HOME，容器其他可写层不持久化。普通 `docker compose down` 保留卷；**`down -v` 或删除卷会删除数据，也可能影响共同使用缓存卷的其他实例**。HOME 备份含凭据，按敏感数据保管。
+Recreation reuses HOME; other writable container-layer files do not persist. Ordinary `docker compose down` keeps volumes. **`docker compose down -v` or deleting volumes destroys data**, and removing a shared cache volume can also affect other instances. HOME backups contain credentials and must be protected as sensitive data.
 
-[发布工作流](.github/workflows/publish.yml)每日检查基础镜像、工具、官方 skills 和 Chromium / zipalign 依赖，变化经双架构验证后发布 `latest`；不会自动更新运行中的容器。只有 `latest`，无历史标签或自动回滚。镜像依赖清单：`/usr/share/agent-runtime/dependencies.json`。
+The [publish workflow](.github/workflows/publish.yml) checks the base image, tools, official skills and Chromium/zipalign dependencies daily. Changes are published as `latest` after verification on both architectures. It **does not update running containers automatically**. Only `latest` is retained; there are no historical tags or automatic rollback. The image's dependency manifest is at `/usr/share/agent-runtime/dependencies.json`.
 
-## 开发验证
+## Development
+
+Run the unit tests and build from the checked-in dependency manifest:
 
 ```bash
 python3 -m unittest discover -s tests -v
 python3 scripts/split_dependencies.py --manifest runtime-deps.json --output .build-inputs
 BASE_IMAGE=$(python3 -c 'import json; print(json.load(open("runtime-deps.json"))["base_image"])')
 docker build --build-arg "BASE_IMAGE=$BASE_IMAGE" -t agent-runtime:test .
-IMAGE=agent-runtime:test sh tests/smoke.sh
 ```
 
-共享缓存测试：`SHARED_CACHE_DOCKER_TEST=1 python3 -m unittest discover -s tests -p test_shared_cache.py -v`；npm/Go/uv fixture：`python3 tests/shared_cache_smoke.py`（需 Docker、当前镜像及 `host.docker.internal`）。[验证工作流](.github/workflows/verify.yml)覆盖工具、挂载、私有状态、共享配置、技能和浏览器。离线 fixture 不使用真实凭据，不能证明模型鉴权、Multica 派发、飞书授权或小程序上传成功。
+Container tests need Docker and disposable test resources. Run them on an isolated test host: the smoke scripts use fixed resource names and cleanup commands.
+
+```bash
+IMAGE=agent-runtime:test sh tests/smoke.sh
+SHARED_CACHE_DOCKER_TEST=1 python3 -m unittest discover -s tests -p test_shared_cache.py -v
+python3 tests/shared_cache_smoke.py
+```
+
+The npm/Go/uv fixture test requires the current image and `host.docker.internal`. The [verify workflow](.github/workflows/verify.yml) covers tools, mounts, private state, shared configuration, skills and browsers. Offline fixtures use no real credentials and **do not prove** model authentication, Multica task dispatch, Lark authorization or Mini Program upload success.
