@@ -3,7 +3,7 @@ services:
   runtime:
     init: false
     image: ${RUNTIME_IMAGE:-ghcr.io/creekxi2026/agent-runtime:latest}
-    # 仅入口初始化使用 root；随后降为 1000:1000，并清除全部 capabilities。
+    # root 仅初始化目录；随后降为 1000:1000 并清除 capabilities。
     user: "0:0"
     working_dir: /home/agent
     environment:
@@ -15,10 +15,10 @@ services:
       LARK_BRAND: ${LARK_BRAND:-feishu}
       MULTICA_DAEMON_DEVICE_NAME: ${COMPOSE_PROJECT_NAME}
       MULTICA_AGENT_RUNTIME_NAME: ${COMPOSE_PROJECT_NAME}
-      # 不提供默认值；仅透传主动设置的同名变量，否则由 Multica 决定。
+      # 仅透传显式设置；未设置时由 Multica 决定并发数。
       MULTICA_DAEMON_MAX_CONCURRENT_TASKS:
     volumes:
-      # 完整私有 HOME；卷名按实例隔离，不复制镜像 HOME 内容。
+      # HOME 按实例隔离；nocopy 避免复制镜像内的 HOME。
       - type: volume
         source: agent-home
         target: /home/agent
@@ -29,8 +29,8 @@ services:
     tmpfs: [/tmp]
     cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, SETPCAP]
-    # 放宽本容器的 seccomp/AppArmor 过滤，以兼容 Codex 的内层 Linux 沙箱。
-    # 不启用 privileged，不增加 SYS_ADMIN，不修改宿主机全局设置。
+    # 仅放宽本容器的 seccomp/AppArmor，以兼容 Codex 内层沙箱。
+    # 不启用 privileged 或 SYS_ADMIN，不修改宿主机全局设置。
     security_opt:
       - no-new-privileges:true
       - seccomp=unconfined

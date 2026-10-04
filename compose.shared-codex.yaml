@@ -1,4 +1,4 @@
-# Optional API-key configuration sharing; sessions stay in private HOME.
+# Share Codex configuration and API-key credentials read-only; sessions stay private.
 services:
   runtime:
     environment:

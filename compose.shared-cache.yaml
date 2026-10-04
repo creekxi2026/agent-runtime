@@ -1,4 +1,4 @@
-# Optional trusted-container download caches; private installed tools stay in HOME.
+# Share download caches only among trusted containers; installed tools stay private.
 services:
   runtime:
     environment:
@@ -13,8 +13,9 @@ services:
         read_only: false
         volume:
           nocopy: true
-    # Compose entrypoint replaces image CMD: retain the published daemon command.
+    # Overriding entrypoint clears the image CMD; keep the daemon command explicit.
     command: [multica, daemon, start, --foreground, --no-auto-update, --no-auto-reload, --workspaces-root, /home/agent/workspace]
+    # Reject symlinks; initialize only cache directories owned by 1000:1000 at 0750.
     entrypoint:
       - /bin/sh
       - -ec

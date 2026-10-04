@@ -1,11 +1,9 @@
-# CI resolves this once, shares runtime-deps.json across both architectures, and
-# passes its base_image as BASE_IMAGE. The installer rejects a mismatched FROM.
+# Both architectures use the same lock; the installer rejects a base-image mismatch.
 ARG BASE_IMAGE=debian:stable-slim@sha256:5bc3287b25407c965a30f38e32603dc253a3869e1b12a21ac09bfc27fd8b13ce
 FROM ${BASE_IMAGE} AS core
 ARG BASE_IMAGE
 ARG TARGETARCH
-# Chromium updates are detected from signed per-architecture apt metadata in
-# core.json; its locked versions/checksums invalidate the browser install layer.
+
 USER root
 ENV DEBIAN_FRONTEND=noninteractive PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN apt-get update \
@@ -15,8 +13,7 @@ RUN apt-get update \
       xz-utils libatomic1 \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-# Only explicitly enumerated runtime inputs enter this public image. No project
-# source, user HOME, credentials or full third-party root filesystem is copied.
+# Only declared runtime inputs enter the image, not project source, HOME or credentials.
 RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \
     --mount=type=bind,source=.build-inputs/core.json,target=/tmp/core.json \
     PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install_tools.py \
@@ -35,7 +32,8 @@ COPY --chmod=644 agent-tools-path.sh /etc/profile.d/agent-tools.sh
 COPY --chmod=755 bootstrap.sh /usr/local/bin/agent-bootstrap
 COPY --chmod=755 entrypoint.sh /usr/local/bin/agent-entrypoint
 
-# CLI stages inherit the core toolchains, not one another's inputs or outputs.
+# Chromium's locked versions/checksums control this layer. Replace miniprogram-ci's
+# zipalign with the native architecture; only that helper is user-owned for signing.
 RUN --mount=type=bind,source=scripts,target=/tmp/install-scripts \
     --mount=type=bind,source=.build-inputs/core.json,target=/tmp/core.json \
     PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install-scripts/install_official.py \
@@ -48,7 +46,7 @@ RUN --mount=type=bind,source=scripts,target=/tmp/install-scripts \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 COPY playwright.json /usr/share/agent-runtime/playwright.json
 RUN chmod 755 /usr/share/agent-runtime && chmod 644 /usr/share/agent-runtime/playwright.json
-# Build-only scripts, input locks and npm caches never enter the final image.
+
 FROM core AS codex-tool
 RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \
     --mount=type=bind,source=.build-inputs/codex.json,target=/tmp/codex.json \
@@ -64,12 +62,10 @@ RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.
     && chmod -R go-w /opt/multica
 
 FROM core AS runtime
-# --link makes each copied CLI blob independent of the preceding CLI layer.
-# Both destinations are real paths (never a symlink traversal), and neither
-# COPY duplicates the core filesystem or any unrelated /usr/local/bin tools.
+# --link keeps CLI layers independent; destinations must not traverse symlinks.
 COPY --link --from=codex-tool /opt/codex /opt/codex
 COPY --link --from=multica-tool /opt/multica/bin/multica /usr/local/bin/multica
-# The complete lock is metadata only; it cannot invalidate tool installation.
+# The full lock is metadata; component locks control installation layers.
 COPY runtime-deps.json /usr/share/agent-runtime/dependencies.json
 
 ENV HOME=/home/agent \

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
-# Root is only for first bind-directory ownership; never resolve its commands
-# through a PATH containing the user's writable ~/.local/bin.
+# Root only prepares private directories, then drops privileges and capabilities.
+# Use absolute command paths: PATH includes user-writable ~/.local/bin.
 if [ "$(/usr/bin/id -u)" = 0 ]; then
   if [ "${HOME:-}" != /home/agent ]; then
     printf 'Expected HOME=/home/agent; use the matching Compose file.\n' >&2

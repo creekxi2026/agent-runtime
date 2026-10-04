@@ -1,4 +1,4 @@
-# Explicit host-directory override; add after the named-volume Compose files.
+# Load after named-volume files to replace HOME with a host directory.
 services:
   runtime:
     volumes:

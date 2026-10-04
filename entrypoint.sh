@@ -2,7 +2,7 @@
 set -eu
 umask 077
 mkdir -p "$CODEX_HOME" "$HOME/workspace" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.cache" "$HOME/.cache/go-tmp"
-# Preserve custom skills; retire only obsolete image-managed links.
+# Remove only stale image-managed skill links; preserve custom skills.
 managed=${AGENT_MANAGED_SKILLS_DIR:-/opt/agent-skills}
 mkdir -p "$HOME/.agents/skills" "$HOME/.playwright"
 for target in "$HOME/.agents/skills"/*; do
@@ -22,7 +22,7 @@ if [ -f "$config" ] && [ ! -e "$HOME/.playwright/cli.config.json" ] && [ ! -L "$
   ln -s "$config" "$HOME/.playwright/cli.config.json"
 fi
 if [ -n "${CODEX_SHARED_DIR:-}" ]; then
-  # Preflight both files before moving any private config or credentials.
+  # Check both shared files and backup conflicts before moving private credentials.
   for name in config.toml auth.json; do
     source="$CODEX_SHARED_DIR/$name"
     target="$CODEX_HOME/$name"
