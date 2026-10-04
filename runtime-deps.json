@@ -42,12 +42,12 @@
     },
     "uv": {
       "amd64": {
-        "sha256": "b9980552309f09c15172b8be828555e375097f16deb459795ce7bfd200380f0b",
-        "url": "https://github.com/astral-sh/uv/releases/download/0.12.22/uv-x86_64-unknown-linux-gnu.tar.gz"
+        "sha256": "9167d72b3319674b6303c4cbe071854bba13ebdf3d76b1a7cbdc175471fb66d6",
+        "url": "https://github.com/astral-sh/uv/releases/download/0.12.23/uv-x86_64-unknown-linux-gnu.tar.gz"
       },
       "arm64": {
-        "sha256": "6f66a14e8239871fb477f9746c941fedfa77e8fe28a8bc7c07e1dc7f53a66712",
-        "url": "https://github.com/astral-sh/uv/releases/download/0.12.22/uv-aarch64-unknown-linux-gnu.tar.gz"
+        "sha256": "6524bd338177ed50d035d39354e12545e993bbeba2ecbddf0480c5b3a81d313f",
+        "url": "https://github.com/astral-sh/uv/releases/download/0.12.23/uv-aarch64-unknown-linux-gnu.tar.gz"
       }
     }
   },
@@ -56,6 +56,36 @@
   "base_platforms": {
     "amd64": "sha256:520c7157b4b1c3c46fa56bac0e748ea21d60956c0512b300e3b16d8757f68e2d",
     "arm64": "sha256:6cd299e86325abd62517d61ee57cba4fbef96ac9f086afee1613db7091443007"
+  },
+  "chromium": {
+    "amd64": {
+      "chromium": {
+        "sha256": "ba20f2bf959cc302694147fb4d881586c7b41688c5dd5b1555f560732733e3d5",
+        "version": "154.0.8037.92-1~deb13u1"
+      },
+      "chromium-common": {
+        "sha256": "ed25b5290168e9775641864aa6f831b15fc53f57e63b30dcc0256d6588fa0831",
+        "version": "154.0.8037.92-1~deb13u1"
+      },
+      "chromium-sandbox": {
+        "sha256": "4519f5a1483fb610c1dc412722ebbd4a4ab9921db2263a90f8bda34ce62c7967",
+        "version": "154.0.8037.92-1~deb13u1"
+      }
+    },
+    "arm64": {
+      "chromium": {
+        "sha256": "5d000181580f6673b2889a99811ca8de973b76872fc591f379546fd85a2c6a93",
+        "version": "154.0.8037.92-1~deb13u1"
+      },
+      "chromium-common": {
+        "sha256": "c635385e9a7dd059f003b703046a1937baa34d381b8989345a412414847f3b6f",
+        "version": "154.0.8037.92-1~deb13u1"
+      },
+      "chromium-sandbox": {
+        "sha256": "35eb4a08ad3b7a8aa71c77a0abd556bd0458c782d075ef2b69c6a22dba940552",
+        "version": "154.0.8037.92-1~deb13u1"
+      }
+    }
   },
   "npm": {
     "@larksuite/cli": {
@@ -94,6 +124,14 @@
       "version": "12.8.1"
     }
   },
+  "official_skills": {
+    "lark": {
+      "commit": "32e14dea9041e7876c8b41aead963b10866267d1",
+      "sha256": "58a2b13c489bf1ed7db04dfaf5af2c006bb16ae07c5625a91739c4b5d827e61b",
+      "tree": "9490f79dcc7cac4d330510caf308915d384b984e",
+      "url": "https://codeload.github.com/larksuite/cli/tar.gz/32e14dea9041e7876c8b41aead963b10866267d1"
+    }
+  },
   "schema_version": 1,
   "versions": {
     "codex": "0.160.0",
@@ -107,6 +145,6 @@
     "playwright": "1.63.0",
     "playwright_cli": "0.1.22",
     "pnpm": "12.8.1",
-    "uv": "0.12.22"
+    "uv": "0.12.23"
   }
 }

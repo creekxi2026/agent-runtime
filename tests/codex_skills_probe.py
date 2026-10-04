@@ -12,12 +12,11 @@ import threading
 
 assert os.getuid() == 1000 and os.getgid() == 1000, "Probe must use the real agent identity"
 skill_dir = Path("/home/agent/.agents/skills/runtime-shared-smoke")
-try:
-    (skill_dir / "forbidden-write").write_text("must not succeed")
-except OSError as error:
-    assert error.errno == errno.EROFS, error
-else:
-    raise AssertionError("Shared skill mount is writable")
+inventory = json.loads(Path("/opt/agent-skills/inventory.json").read_text())
+assert len(inventory) > 1
+for name in inventory:
+    target = Path.home() / ".agents/skills" / name
+    assert target.is_symlink() and (target / "SKILL.md").is_file(), name
 
 shared_codex = os.environ.get("CODEX_SHARED_DIR")
 if shared_codex:
@@ -38,10 +37,17 @@ if shared_codex:
     assert auth.get("OPENAI_API_KEY") == "INVALID-TEST-ONLY-NOT-A-REAL-KEY-" + sys.argv[1], "Stale test auth fixture"
     del auth
 
+task_mode = len(sys.argv) > 2 and sys.argv[2] == "task"
+app_env = dict(os.environ)
+if task_mode:
+    task_home = Path.home() / "workspace/.task-codex-fixture"
+    task_home.mkdir(exist_ok=True)
+    app_env["CODEX_HOME"] = str(task_home)
+
 with tempfile.TemporaryFile(mode="w+") as errors:
     process = subprocess.Popen(
         ["codex", "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=errors, text=True, bufsize=1,
+        stderr=errors, text=True, bufsize=1, env=app_env,
     )
     messages = queue.Queue()
 
@@ -74,14 +80,17 @@ with tempfile.TemporaryFile(mode="w+") as errors:
             "cwds": ["/home/agent/workspace"], "forceReload": True,
         }})
         result = reply(2)
+        discovered = {skill["name"] for entry in result["data"] for skill in entry["skills"]}
+        assert set(inventory) <= discovered, set(inventory) - discovered
+        print("PASS real Codex official skills/list:", len(inventory))
         found = [skill for entry in result["data"] for skill in entry["skills"]
                  if skill["name"] == "runtime-shared-smoke"]
         assert len(found) == 1, result
         assert found[0]["description"] == "Shared smoke revision-" + sys.argv[1], found
         assert found[0]["enabled"], found
         assert found[0]["path"] == str(skill_dir / "SKILL.md"), found
-        print("PASS real Codex discovery, read-only shared skill:", sys.argv[1])
-        if shared_codex:
+        print("PASS real Codex private fixture discovery:", sys.argv[1])
+        if shared_codex and not task_mode:
             send({"id": 3, "method": "config/read", "params": {
                 "includeLayers": False, "cwd": "/home/agent/workspace",
             }})

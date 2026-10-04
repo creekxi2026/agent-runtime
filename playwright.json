@@ -1,0 +1,6 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "launchOptions": {"executablePath": "/usr/bin/chromium", "headless": true}
+  }
+}

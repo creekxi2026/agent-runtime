@@ -21,6 +21,7 @@ for process in ("1", "self"):
 for directory in ("/opt/node", "/opt/go"):
     assert Path(directory).is_dir() and not os.access(directory, os.W_OK)
 assert not os.access("/opt/agent-tools", os.W_OK)
+assert not os.access("/opt/agent-skills", os.W_OK)
 mode = sys.argv[1]
 if mode == "install":
     package = home / "workspace/.home-install-fixture"
@@ -44,7 +45,6 @@ else:
     assert not (home / ".local/bin/runtime-home-probe").exists()
 # Shared mounts belong to the administrator; private state must not be root-owned.
 for base, directories, files in os.walk(home, followlinks=False):
-    directories[:] = [name for name in directories if Path(base, name) != home / ".agents/skills"]
     for name in files + directories:
         path = Path(base, name)
         assert path.lstat().st_uid == 1000, "Unexpected owner in private HOME: " + str(path)

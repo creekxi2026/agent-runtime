@@ -6,7 +6,3 @@ services:
         source: ${SHARED_CODEX_DIR}
         target: /shared/codex
         read_only: true
-      - type: bind
-        source: ${SHARED_SKILLS_DIR}
-        target: /home/agent/.agents/skills
-        read_only: true

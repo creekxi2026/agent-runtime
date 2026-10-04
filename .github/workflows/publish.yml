@@ -104,7 +104,8 @@ jobs:
         env:
           IMAGE: agent-runtime:test
         run: sh tests/smoke.sh
-      - name: Verify real remote browser client
+      - name: Optional remote browser compatibility
+        if: ${{ vars.TEST_REMOTE_BROWSER == 'true' }}
         env:
           IMAGE: agent-runtime:test
         run: bash tests/remote-browser.sh

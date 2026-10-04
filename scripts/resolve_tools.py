@@ -2,8 +2,8 @@
 """Resolve official stable tool releases ONCE for both Linux architectures.
 
 No timestamps, credentials or expiring download URLs enter the manifest. Debian
-packages follow stable's signed apt repositories at image build time; this file
-pins the base index and independently distributed tools, not the apt snapshot.
+Chromium packages are resolved from signed apt metadata before the build and
+locked per architecture. Other apt packages are not independently tracked.
 """
 import argparse
 import base64
@@ -198,6 +198,9 @@ def resolve():
         package = npm_package(name)
         result["npm"][name] = package
         versions[key] = package["version"]
+    from official_inputs import chromium_inputs, lark_skills_inputs
+    result['official_skills'] = {'lark': lark_skills_inputs(github_json, get_bytes)}
+    result['chromium'] = chromium_inputs(result['base_image'])
     return result
 
 

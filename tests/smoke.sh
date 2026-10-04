@@ -2,9 +2,12 @@
 set -eu
 : "${IMAGE:=agent-runtime:test}"
 export IMAGE
+# Portable command timeout: macOS does not bundle GNU timeout.
+timeout() { python3 -c 'import subprocess,sys;
+try: sys.exit(subprocess.run(sys.argv[2:], timeout=float(sys.argv[1])).returncode)
+except subprocess.TimeoutExpired: sys.exit(124)' "$@"; }
 project="agent-smoke-$$"
 shared=$(mktemp -d)
-export SHARED_SKILLS_DIR="$shared/skills"
 export SHARED_CODEX_DIR="$shared/codex"
 reader_a=''
 reader_b=''
@@ -21,9 +24,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 # World-writable test fixture: EROFS must come from the mount, not UNIX modes.
-mkdir -p "$SHARED_SKILLS_DIR/runtime-shared-smoke" "$SHARED_CODEX_DIR"
-printf '%s\n' '---' 'name: runtime-shared-smoke' 'description: Shared smoke revision-before' '---' '# Shared smoke fixture' > "$SHARED_SKILLS_DIR/runtime-shared-smoke/SKILL.md"
-chmod 755 "$shared" "$SHARED_SKILLS_DIR"
+mkdir -p "$SHARED_CODEX_DIR"
+chmod 755 "$shared"
 chmod 777 "$SHARED_CODEX_DIR"
 # Invalid local-only fixtures: never call a model or claim authentication.
 write_codex_fixture() {
@@ -48,8 +50,6 @@ for name, content in files.items():
 PY
 }
 write_codex_fixture before
-chmod 777 "$SHARED_SKILLS_DIR/runtime-shared-smoke"
-chmod 666 "$SHARED_SKILLS_DIR/runtime-shared-smoke/SKILL.md"
 sh -n entrypoint.sh
 sh -n bootstrap.sh
 sh -n agent-tools-path.sh
@@ -64,7 +64,8 @@ docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000
   miniprogram-ci --help >/dev/null
   go version; uv --version; pnpm --version
   for tool in git gh ssh curl jq rg rsync zip unzip python3 gcc g++ make pkg-config; do command -v "$tool"; done
-  for tool in docker podman postgres chromium firefox; do
+  chromium --version
+  for tool in docker podman postgres firefox; do
     if command -v "$tool" >/dev/null 2>&1; then echo "Unexpected tool: $tool"; exit 16; fi
   done
   test ! -d /opt/agent-upstream
@@ -107,22 +108,31 @@ DATA_DIR="$shared/$project-a-home" docker compose -f compose.yaml -f tests/compo
   --env-file runtime.env.example -p "$project-a" run --rm runtime sh -ec '
     test "$(id -u)" = 1000
     printf writable > /shared/codex/write-probe
-    printf writable > /home/agent/.agents/skills/runtime-shared-smoke/write-probe
-    rm /shared/codex/write-probe /home/agent/.agents/skills/runtime-shared-smoke/write-probe
+    rm /shared/codex/write-probe
   '
-# Real remote-browser verification is a separate CI step; browsers never enter this image.
+# Real local browser E2E uses the actual UID and native global defaults.
+compose "$project-a" run --rm -T runtime python3 - < tests/local_browser_probe.py
+compose "$project-a" run --rm -T runtime python3 - persist-write < tests/local_browser_probe.py
+compose "$project-a" run --rm -T runtime python3 - persist-check < tests/local_browser_probe.py
+compose "$project-b" run --rm -T runtime python3 - isolated < tests/local_browser_probe.py
+compose "$project-a" run --rm -T runtime python3 - < tests/task_credentials_probe.py
 # Keep both user containers alive while one host-side update reaches both.
 reader_a=$(compose "$project-a" run --no-deps -d runtime sleep 300)
 reader_b=$(compose "$project-b" run --no-deps -d runtime sleep 300)
 for reader in "$reader_a" "$reader_b"; do
+  docker exec --user 1000:1000 "$reader" sh -ec 'mkdir -p "$HOME/.agents/skills/runtime-shared-smoke"; printf "%s\n" "---" "name: runtime-shared-smoke" "description: Shared smoke revision-before" "---" > "$HOME/.agents/skills/runtime-shared-smoke/SKILL.md"'
   timeout 90 docker exec --user 1000:1000 -i "$reader" python3 - before < tests/codex_skills_probe.py
 done
-printf '%s\n' '---' 'name: runtime-shared-smoke' 'description: Shared smoke revision-after' '---' '# Shared smoke fixture' > "$SHARED_SKILLS_DIR/runtime-shared-smoke/SKILL.md"
+for reader in "$reader_a" "$reader_b"; do
+  docker exec --user 1000:1000 "$reader" sh -ec 'printf "%s\n" "---" "name: runtime-shared-smoke" "description: Shared smoke revision-after" "---" > "$HOME/.agents/skills/runtime-shared-smoke/SKILL.md"'
+done
 write_codex_fixture after
 for reader in "$reader_a" "$reader_b"; do
   timeout 90 docker exec --user 1000:1000 -i "$reader" python3 - after < tests/codex_skills_probe.py
 done
 compose "$project-a" run --rm -T runtime python3 - check < tests/home_fixture.py
+compose "$project-a" run --rm -T runtime python3 - after < tests/codex_skills_probe.py
+compose "$project-a" run --rm -T runtime python3 - after task < tests/codex_skills_probe.py
 # No credential: a real daemon must refuse startup, never fabricate a login.
 log=$(mktemp)
 if timeout 30 docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000,mode=700 --tmpfs /tmp --cap-drop ALL "$IMAGE" >"$log" 2>&1; then
@@ -133,4 +143,4 @@ else
   grep -qi 'not authenticated' "$log"
 fi
 rm "$log"
-printf '%s\n' 'PASS: offline startup, self-built tools, Go race/CGO, Python venv, rsync, empty HOME mounts and persistent user installs, no Podman/socket, non-root/read-only, per-user persistence, real Codex shared-skills/config parsing and API-key account type (not authentication), atomic shared-file update for two users, writable default and optional read-only shared mounts, missing-auth rejection.'
+printf '%s\n' 'PASS: offline tools, Go race/CGO, Python venv, persistent private HOME/tools, UID1000/caps-zero, official Codex skills discovery, local Chromium navigation/PNG/concurrent idle cleanup, shared Codex atomic updates (not authentication), writable and read-only Codex policies, missing-auth rejection.'

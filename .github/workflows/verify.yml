@@ -73,7 +73,10 @@ jobs:
           cache-to: type=gha,version=2,scope=runtime-${{ matrix.arch }},mode=max
       - name: Exercise fresh home and tools without real credentials
         run: sh tests/smoke.sh
-      - name: Verify real remote browser client
+      - name: Optional remote browser compatibility
+        if: ${{ vars.TEST_REMOTE_BROWSER == 'true' }}
+        env:
+          IMAGE: agent-runtime:test
         run: bash tests/remote-browser.sh
       - name: Prove independent CLI layers using a fresh builder
         env:

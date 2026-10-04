@@ -34,13 +34,7 @@ services:
         read_only: false
         bind:
           create_host_path: false
-      - type: bind
-        source: ${SHARED_SKILLS_DIR:?请在 .env 设置共享 skills 目录}
-        target: /home/agent/.agents/skills
-        read_only: false
-        bind:
-          create_host_path: true
-    # 共享配置和 skills 可写；宿主权限须允许 UID/GID 1000:1000 写入。
+    # 共享 Codex 配置可写；skills 和用户工具随私有 HOME 持久化。
     read_only: false
     tmpfs: [/tmp]
     cap_drop: [ALL]

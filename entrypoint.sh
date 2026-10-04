@@ -2,6 +2,19 @@
 set -eu
 umask 077
 mkdir -p "$CODEX_HOME" "$HOME/workspace" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.cache" "$HOME/.cache/go-tmp"
+# Image-managed defaults live outside the persistent HOME mount. User-owned
+# names/configs win; links into the managed prefix track image upgrades.
+managed=${AGENT_MANAGED_SKILLS_DIR:-/opt/agent-skills}
+mkdir -p "$HOME/.agents/skills" "$HOME/.playwright"
+for source in "$managed"/*; do
+  [ -f "$source/SKILL.md" ] || continue
+  target="$HOME/.agents/skills/${source##*/}"
+  if [ ! -e "$target" ] && [ ! -L "$target" ]; then ln -s "$source" "$target"; fi
+done
+config=${AGENT_PLAYWRIGHT_CONFIG:-/usr/share/agent-runtime/playwright.json}
+if [ -f "$config" ] && [ ! -e "$HOME/.playwright/cli.config.json" ] && [ ! -L "$HOME/.playwright/cli.config.json" ]; then
+  ln -s "$config" "$HOME/.playwright/cli.config.json"
+fi
 if [ -n "${CODEX_SHARED_DIR:-}" ]; then
   # Preflight both files before moving any private config or credentials.
   for name in config.toml auth.json; do

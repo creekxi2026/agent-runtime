@@ -1,16 +1,14 @@
-# syntax=docker/dockerfile:1
 # CI resolves this once, shares runtime-deps.json across both architectures, and
 # passes its base_image as BASE_IMAGE. The installer rejects a mismatched FROM.
 ARG BASE_IMAGE=debian:stable-slim@sha256:5bc3287b25407c965a30f38e32603dc253a3869e1b12a21ac09bfc27fd8b13ce
 FROM ${BASE_IMAGE} AS core
 ARG BASE_IMAGE
 ARG TARGETARCH
-# Supply the UTC build day to refresh signed Debian security packages daily.
-ARG APT_REFRESH=manual
+# Chromium updates are detected from signed per-architecture apt metadata in
+# core.json; its locked versions/checksums invalidate the browser install layer.
 USER root
 ENV DEBIAN_FRONTEND=noninteractive PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-RUN test -n "${APT_REFRESH}" \
-    && apt-get update \
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       bash ca-certificates curl jq git openssh-client ripgrep rsync zip unzip \
       build-essential pkg-config python3 python3-venv tini util-linux bubblewrap \
@@ -38,6 +36,16 @@ COPY --chmod=755 bootstrap.sh /usr/local/bin/agent-bootstrap
 COPY --chmod=755 entrypoint.sh /usr/local/bin/agent-entrypoint
 
 # CLI stages inherit the core toolchains, not one another's inputs or outputs.
+RUN --mount=type=bind,source=scripts,target=/tmp/install-scripts \
+    --mount=type=bind,source=.build-inputs/core.json,target=/tmp/core.json \
+    PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install-scripts/install_official.py \
+      --mode chromium --manifest /tmp/core.json --arch "${TARGETARCH}" \
+    && PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install-scripts/install_official.py \
+      --mode skills --manifest /tmp/core.json --arch "${TARGETARCH}" \
+    && chmod -R go-w /opt/agent-skills \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+COPY playwright.json /usr/share/agent-runtime/playwright.json
+RUN chmod 755 /usr/share/agent-runtime && chmod 644 /usr/share/agent-runtime/playwright.json
 # Build-only scripts, input locks and npm caches never enter the final image.
 FROM core AS codex-tool
 RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \
@@ -82,4 +90,4 @@ WORKDIR /home/agent
 ENTRYPOINT ["/usr/local/bin/agent-bootstrap"]
 CMD ["multica", "daemon", "start", "--foreground", "--no-auto-update", "--no-auto-reload", "--workspaces-root", "/home/agent/workspace"]
 LABEL org.opencontainers.image.source="https://github.com/creekxi2026/agent-runtime" \
-      org.opencontainers.image.description="Multica + Codex on Debian slim; persistent HOME; verified official tools; no bundled browsers or startup installation"
+      org.opencontainers.image.description="Multica + Codex on Debian slim; persistent HOME; verified official tools; bundled Chromium and official skills; no startup downloads"

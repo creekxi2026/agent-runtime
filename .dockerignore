@@ -6,6 +6,8 @@
 !scripts/
 scripts/*
 !scripts/install_tools.py
+!scripts/install_official.py
+!playwright.json
 !runtime-deps.json
 !.build-inputs/
 !.build-inputs/*.json

@@ -48,6 +48,7 @@ def validate_component(manifest, component):
     fields = {"schema_version", "component", "versions", "npm", "artifacts"}
     if component == "core":
         fields.update({"base_image", "base_digest", "base_platforms"})
+        fields.update(set(manifest) & {"official_skills", "chromium"})
     if set(manifest) != fields:
         raise ValueError("Unexpected component manifest fields")
     for field, expected in zip(("versions", "npm", "artifacts"), schemas[component]):
@@ -81,7 +82,7 @@ def verify_integrity(path, integrity):
 def download(artifact, destination):
     parsed = urllib.parse.urlsplit(artifact["url"])
     if parsed.scheme != "https" or parsed.netloc not in {
-        "nodejs.org", "go.dev", "github.com", "registry.npmjs.org"
+        "nodejs.org", "go.dev", "github.com", "registry.npmjs.org", "codeload.github.com"
     } or parsed.query or parsed.fragment:
         raise ValueError("Unexpected artifact URL")
     # No credentials are accepted by the build-time installer. Official release
