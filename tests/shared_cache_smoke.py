@@ -72,7 +72,7 @@ try:
         log.write('IMAGE_DIGEST=' + digest + '\n'); log.flush()
         def compose(i):
             env = dict(os.environ, COMPOSE_PROJECT_NAME='shared-cache-smoke', HOME_DIR=str(root / f'home-{i}'), SHARED_CACHE_DIR=str(cache), RUNTIME_IMAGE=digest)
-            return ['docker', 'compose', '--env-file', '/dev/null', '-f', str(ROOT / 'compose.yaml'), '-f', str(ROOT / 'compose.shared-cache.yaml')], env
+            return ['docker', 'compose', '--env-file', '/dev/null', '-f', str(ROOT / 'compose.yaml'), '-f', str(ROOT / 'compose.shared-cache.yaml'), '-f', str(ROOT / 'compose.bind-home.yaml'), '-f', str(ROOT / 'compose.shared-cache.bind.yaml')], env
         def start(i):
             args, env = compose(i)
             run(args + ['run', '--no-deps', '-d', '--name', names[i], 'runtime', 'sh', '-ec', 'id; cat /proc/self/status; exec sleep 600'], env)

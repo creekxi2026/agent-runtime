@@ -21,7 +21,9 @@ class DeploymentTests(unittest.TestCase):
         runtime = self.resolve()
         self.assertEqual(runtime['image'], 'ghcr.io/creekxi2026/agent-runtime:latest')
         self.assertEqual({m['target'] for m in runtime['volumes']}, {'/home/agent'})
-        self.assertEqual(runtime['volumes'][0]['source'], '/fixture/home')
+        self.assertEqual(runtime['volumes'][0]['type'], 'volume')
+        self.assertEqual(runtime['volumes'][0]['source'], 'agent-home')
+        self.assertTrue(runtime['volumes'][0]['volume']['nocopy'])
         self.assertNotIn('CODEX_SHARED_DIR', runtime['environment'])
         self.assertEqual(self.resolve({'RUNTIME_IMAGE': 'example/runtime:test'})['image'], 'example/runtime:test')
 
@@ -47,7 +49,7 @@ class DeploymentTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         for name in ('README.md', 'runtime.env.example', 'compose.yaml'):
             text = (root / name).read_text()
-            self.assertIn('HOME_DIR', text)
+            self.assertIn('HOME_VOLUME', text)
             self.assertIn('RUNTIME_IMAGE', text)
             for retired in ('DATA_DIR', 'IMAGE_TAG', 'MAX_CONCURRENT_TASKS` 不再使用'):
                 self.assertNotIn(retired, text)

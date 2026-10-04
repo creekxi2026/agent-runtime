@@ -42,17 +42,21 @@ API Key 可使用 `codex login --with-api-key` 的标准输入方式。真实凭
 | --- | --- |
 | `COMPOSE_PROJECT_NAME` | 每个实例唯一 |
 | `RUNTIME_IMAGE` | 完整镜像引用，默认上述 full 开发镜像 |
-| `HOME_DIR` | 私有 HOME，默认 `./home` |
+| `HOME_VOLUME` | 私有命名卷，默认 `<COMPOSE_PROJECT_NAME>-home` |
 | `CPU_LIMIT` / `MEMORY_LIMIT` | `2` / `4g` |
 | `MULTICA_DAEMON_MAX_CONCURRENT_TASKS` | 可选；未设置时使用 Multica 原生默认值 |
 
-多个用户分别准备 Compose / `.env`，使用不同实例名和不同 `HOME_DIR`；不要复制他人的 HOME 或凭据。镜像选择只需修改各自 `.env` 的 `RUNTIME_IMAGE`。daemon 并发上限与页面上的 Agent 并发限制独立。
+多个用户分别准备 Compose / `.env`，使用不同实例名；默认 HOME 卷名随实例隔离，自定义 `HOME_VOLUME` 时也须各不相同。不要复制他人的 HOME 或凭据。镜像选择只需修改各自 `.env` 的 `RUNTIME_IMAGE`。daemon 并发上限与页面上的 Agent 并发限制独立。
 
 入口初始化私有目录后降为 UID/GID `1000:1000` 并清除 capabilities。Compose 放宽 seccomp/AppArmor 以支持 Codex 内层沙箱，不启用 privileged 或 Docker socket；这不是不可信多租户的强隔离边界。
 
 ## 持久化
 
-`HOME_DIR` 挂载到 `/home/agent`，保存配置、凭据、缓存、`workspace` 项目、`.local` 后装工具和自定义 skills。重建时复用同一目录；其他容器可写层不持久化。此模板不会搬动已有数据。
+默认由 Compose 创建私有 HOME 命名卷并挂载到 `/home/agent`，保存配置、凭据、缓存、`workspace` 项目、`.local` 后装工具和自定义 skills。`volume.nocopy` 避免固化镜像中的 HOME 内容；镜像工具仍位于 `/opt`。重建时复用同一卷，其他容器可写层不持久化。
+
+普通 `docker compose down` 保留命名卷；不要对需要保留的数据使用 `down -v` 或删除卷。HOME 卷包含凭据，备份需按敏感数据保管。
+
+需要宿主机可见目录时，另下载 [compose.bind-home.yaml](compose.bind-home.yaml)，设置 `HOME_DIR=./home`，并在 `.env` 设置 `COMPOSE_FILE=compose.yaml:compose.bind-home.yaml`。该显式 override 保留目录挂载方式；已有 bind 部署更新配置时也使用它。
 
 ```bash
 docker compose exec --user 1000:1000 runtime bash
@@ -74,9 +78,13 @@ docker compose -f compose.yaml -f compose.shared-codex.yaml up -d
 
 ## 可选共享下载缓存
 
-默认缓存仍在私有 HOME。可信 Linux 容器可下载 [compose.shared-cache.yaml](compose.shared-cache.yaml)，在 `.env` 设置 `SHARED_CACHE_DIR=../shared/caches` 和 `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml`（Windows 使用 `;` 分隔；共享 Codex 时也加入对应 override）。此后普通 `docker compose` 命令会自动使用 override。
+默认缓存仍在私有 HOME。可信 Linux 容器可下载 [compose.shared-cache.yaml](compose.shared-cache.yaml)，在 `.env` 设置 `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml`（Windows 使用 `;` 分隔；共享 Codex 时也加入对应 override）。此后普通 `docker compose` 命令会自动使用 override。
 
-只挂载专用目录到 `/shared/caches`，初始化 `npm`、`go-mod`、`uv` 三个子目录为 UID/GID `1000:1000`、权限 `0750`。仅修改这三个目录本身，不递归修改内容或共享 Codex；非目录/符号链接会拒绝启动。入口保留已发布镜像的 daemon CMD，经原 bootstrap 降权并清除 capabilities，无需重建镜像。
+缓存使用命名卷 `agent-runtime-download-cache`，可通过 `SHARED_CACHE_VOLUME` 自定义；只有选择同一卷名的实例才共享。HOME 始终独立。此配置不共享 Codex 凭据。
+
+如需宿主机缓存目录，再下载 [compose.shared-cache.bind.yaml](compose.shared-cache.bind.yaml)，设置 `SHARED_CACHE_DIR=../shared/caches`，并将该 override 追加到 `COMPOSE_FILE` 最后；HOME 目录挂载可同时加入 `compose.bind-home.yaml`。
+
+只挂载专用缓存存储到 `/shared/caches`，初始化 `npm`、`go-mod`、`uv` 三个子目录为 UID/GID `1000:1000`、权限 `0750`。仅修改这三个目录本身，不递归修改内容或共享 Codex；非目录/符号链接会拒绝启动。入口保留已发布镜像的 daemon CMD，经原 bootstrap 降权并清除 capabilities，无需重建镜像。
 
 显式配置 `NPM_CONFIG_CACHE`、`GOMODCACHE`、`UV_CACHE_DIR`；`UV_LINK_MODE=copy` 避免跨文件系统硬链接。全局工具、项目 `node_modules`、venv、Go build cache 和凭据仍私有。不要挂载或复制 Mac 缓存，不要把凭据放入缓存根。共享缓存可被其他参与容器读取/修改，只用于相互信任、相同 UID 的容器；依赖包缓存可能包含私有源码。清理 uv 缓存时不要同时安装依赖。
 

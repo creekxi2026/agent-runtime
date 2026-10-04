@@ -15,9 +15,9 @@ shared_mode=false
 compose() {
   p=$1; shift
   if [ "$shared_mode" = true ]; then
-    HOME_DIR="$shared/$p-home" docker compose -f compose.yaml -f tests/compose.yaml -f compose.shared-codex.yaml --env-file runtime.env.example -p "$p" "$@"
+    HOME_DIR="$shared/$p-home" docker compose -f compose.yaml -f compose.bind-home.yaml -f tests/compose.yaml -f compose.shared-codex.yaml --env-file runtime.env.example -p "$p" "$@"
   else
-    HOME_DIR="$shared/$p-home" docker compose -f compose.yaml -f tests/compose.yaml --env-file runtime.env.example -p "$p" "$@"
+    HOME_DIR="$shared/$p-home" docker compose -f compose.yaml -f compose.bind-home.yaml -f tests/compose.yaml --env-file runtime.env.example -p "$p" "$@"
   fi
 }
 cleanup() {

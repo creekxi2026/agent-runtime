@@ -7,12 +7,12 @@ services:
       UV_CACHE_DIR: /shared/caches/uv
       UV_LINK_MODE: copy
     volumes:
-      - type: bind
-        source: ${SHARED_CACHE_DIR:-../shared/caches}
+      - type: volume
+        source: download-cache
         target: /shared/caches
         read_only: false
-        bind:
-          create_host_path: true
+        volume:
+          nocopy: true
     # Compose entrypoint replaces image CMD: retain the published daemon command.
     command: [multica, daemon, start, --foreground, --no-auto-update, --no-auto-reload, --workspaces-root, /home/agent/workspace]
     entrypoint:
@@ -50,3 +50,6 @@ services:
         PY
         exec /usr/local/bin/agent-bootstrap "$$@"
       - shared-cache-bootstrap
+volumes:
+  download-cache:
+    name: ${SHARED_CACHE_VOLUME:-agent-runtime-download-cache}

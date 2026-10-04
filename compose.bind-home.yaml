@@ -1,0 +1,5 @@
+# Explicit host-directory override; add after the named-volume Compose files.
+services:
+  runtime:
+    volumes:
+      - "${HOME_DIR:-./home}:/home/agent"

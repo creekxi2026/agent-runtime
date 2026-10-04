@@ -18,12 +18,13 @@ services:
       # 不提供默认值；仅透传主动设置的同名变量，否则由 Multica 决定。
       MULTICA_DAEMON_MAX_CONCURRENT_TASKS:
     volumes:
-      - type: bind
-        source: ${HOME_DIR:-./home}
+      # 完整私有 HOME；卷名按实例隔离，不复制镜像 HOME 内容。
+      - type: volume
+        source: agent-home
         target: /home/agent
         read_only: false
-        bind:
-          create_host_path: true
+        volume:
+          nocopy: true
     read_only: false
     tmpfs: [/tmp]
     cap_drop: [ALL]
@@ -38,3 +39,6 @@ services:
     cpus: ${CPU_LIMIT:-2}
     pids_limit: 512
     restart: unless-stopped
+volumes:
+  agent-home:
+    name: ${HOME_VOLUME:-${COMPOSE_PROJECT_NAME}-home}

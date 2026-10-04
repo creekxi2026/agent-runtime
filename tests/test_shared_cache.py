@@ -57,7 +57,7 @@ class CachePermissionTests(unittest.TestCase):
             outside.mkdir(mode=0o700)
             (cache / 'uv').symlink_to('/outside')
             env = dict(os.environ, COMPOSE_PROJECT_NAME='cache-permission', HOME_DIR=str(root / 'home'), SHARED_CACHE_DIR=str(cache))
-            result = subprocess.run(['docker', 'compose', '--env-file', '/dev/null', '-f', str(ROOT / 'compose.yaml'), '-f', str(ROOT / 'compose.shared-cache.yaml'), 'run', '--rm', '--no-deps', '-v', str(outside) + ':/outside', 'runtime', 'true'], env=env, capture_output=True, text=True, timeout=60)
+            result = subprocess.run(['docker', 'compose', '--env-file', '/dev/null', '-f', str(ROOT / 'compose.yaml'), '-f', str(ROOT / 'compose.shared-cache.yaml'), '-f', str(ROOT / 'compose.bind-home.yaml'), '-f', str(ROOT / 'compose.shared-cache.bind.yaml'), 'run', '--rm', '--no-deps', '-v', str(outside) + ':/outside', 'runtime', 'true'], env=env, capture_output=True, text=True, timeout=60)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(npm.stat().st_mode, before.st_mode)
             self.assertEqual(outside.stat().st_mode & 0o777, 0o700)
@@ -72,7 +72,7 @@ class CachePermissionTests(unittest.TestCase):
             (cache / 'sentinel').write_text('untouched')
             original = (cache / 'sentinel').stat()
             env = dict(os.environ, COMPOSE_PROJECT_NAME='cache-permission', HOME_DIR=str(root / 'home'), SHARED_CACHE_DIR=str(cache))
-            args = ['docker', 'compose', '--env-file', '/dev/null', '-f', str(ROOT / 'compose.yaml'), '-f', str(ROOT / 'compose.shared-cache.yaml'), 'run', '--rm', '--no-deps', 'runtime']
+            args = ['docker', 'compose', '--env-file', '/dev/null', '-f', str(ROOT / 'compose.yaml'), '-f', str(ROOT / 'compose.shared-cache.yaml'), '-f', str(ROOT / 'compose.bind-home.yaml'), '-f', str(ROOT / 'compose.shared-cache.bind.yaml'), 'run', '--rm', '--no-deps', 'runtime']
             probe = '''set -eu; test "$(id -u)" = 1000; for d in npm go-mod uv; do test -w /shared/caches/$d; test "$(stat -c %a /shared/caches/$d)" = 750; done; test "$(awk '/CapEff/ {print $2}' /proc/self/status)" = 0000000000000000; test "$(awk '/NoNewPrivs/ {print $2}' /proc/self/status)" = 1'''
             for _ in range(2):
                 result = subprocess.run(args + ['sh', '-ec', probe], env=env, text=True, capture_output=True, timeout=60)
