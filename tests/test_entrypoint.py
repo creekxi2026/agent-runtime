@@ -62,13 +62,137 @@ class SharedCodexTests(unittest.TestCase):
 
     def run_entrypoint(self, *command):
         return subprocess.run(
-            ["sh", ENTRYPOINT, *(command or ("true",))], env=self.env,
+            ["sh", getattr(self, "entrypoint", ENTRYPOINT), *(command or ("true",))], env=self.env,
             capture_output=True, text=True, timeout=5,
         )
 
     def assert_started(self, *command):
         result = self.run_entrypoint(*command)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def use_canonical_shared_fixture(self):
+        # Remap only the container's fixed mount in a disposable script copy.
+        # No test reads or writes the real /shared mount or the user's HOME.
+        script = self.root / "entrypoint.sh"
+        script.write_text(pathlib.Path(ENTRYPOINT).read_text().replace(
+            "/shared/codex", str(self.shared)))
+        self.entrypoint = str(script)
+
+    def test_private_shared_private_restores_backups_without_consuming_them(self):
+        self.use_canonical_shared_fixture()
+        for name in ("config.toml", "auth.json"):
+            (self.codex / name).write_text("private-" + name)
+        self.assert_started()
+        self.env.pop("CODEX_SHARED_DIR")
+        # Restore both a dangling config link and a still-mounted auth link.
+        (self.shared / "config.toml").unlink()
+        self.assert_started()
+        self.assert_started()
+        for name in ("config.toml", "auth.json"):
+            target = self.codex / name
+            self.assertFalse(target.is_symlink())
+            self.assertEqual(target.read_text(), "private-" + name)
+            self.assertEqual((self.codex / (name + ".before-shared")).read_text(),
+                             "private-" + name)
+
+    def test_private_mode_clears_only_known_dead_links_without_backups(self):
+        self.use_canonical_shared_fixture()
+        self.assert_started()
+        self.env.pop("CODEX_SHARED_DIR")
+        for name in ("config.toml", "auth.json"):
+            (self.shared / name).unlink()
+        self.assert_started()
+        self.assert_started()
+        for name in ("config.toml", "auth.json"):
+            target = self.codex / name
+            self.assertFalse(target.is_symlink())
+            self.assertFalse(target.exists())
+
+    def test_private_mode_live_shared_link_without_backup_fails_before_restore(self):
+        self.use_canonical_shared_fixture()
+        (self.codex / "config.toml").write_text("private-config")
+        self.assert_started()
+        self.env.pop("CODEX_SHARED_DIR")
+        result = self.run_entrypoint()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("auth.json", result.stderr)
+        self.assertIn("CODEX_SHARED_DIR", result.stderr)
+        self.assertIn("before-shared", result.stderr)
+        for name in ("config.toml", "auth.json"):
+            self.assertEqual(os.readlink(self.codex / name), str(self.shared / name))
+        self.assertEqual((self.codex / "config.toml.before-shared").read_text(),
+                         "private-config")
+        self.assertEqual((self.shared / "auth.json").read_bytes(), self.auth)
+
+    def test_private_mode_invalid_backup_fails_before_changing_either_link(self):
+        self.use_canonical_shared_fixture()
+        for name in ("config.toml", "auth.json"):
+            (self.codex / name).write_text("private-" + name)
+        self.assert_started()
+        backup = self.codex / "auth.json.before-shared"
+        backup.unlink()
+        backup.mkdir()
+        (backup / "valuable").write_text("keep-this")
+        self.env.pop("CODEX_SHARED_DIR")
+        result = self.run_entrypoint()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(str(backup), result.stderr)
+        self.assertIn("manually", result.stderr)
+        for name in ("config.toml", "auth.json"):
+            self.assertEqual(os.readlink(self.codex / name), str(self.shared / name))
+        self.assertEqual((backup / "valuable").read_text(), "keep-this")
+        self.assertEqual((self.codex / "config.toml.before-shared").read_text(),
+                         "private-config.toml")
+
+    def test_private_mode_preserves_unknown_links_and_their_backups(self):
+        self.use_canonical_shared_fixture()
+        self.env.pop("CODEX_SHARED_DIR")
+        originals = {
+            "config.toml": self.root / "missing-custom-config",
+            "auth.json": self.shared / "config.toml",  # Wrong basename is not managed.
+        }
+        for name, original in originals.items():
+            (self.codex / name).symlink_to(original)
+            (self.codex / (name + ".before-shared")).write_text("older-" + name)
+        self.assert_started()
+        self.assert_started()
+        for name, original in originals.items():
+            self.assertEqual(os.readlink(self.codex / name), str(original))
+            self.assertEqual((self.codex / (name + ".before-shared")).read_text(),
+                             "older-" + name)
+        self.assertEqual((self.shared / "config.toml").read_bytes(), self.config)
+
+    def test_private_mode_backup_conflict_never_overwrites_private_files(self):
+        self.use_canonical_shared_fixture()
+        self.env.pop("CODEX_SHARED_DIR")
+        for name in ("config.toml", "auth.json"):
+            (self.codex / name).write_text("current-" + name)
+            (self.codex / (name + ".before-shared")).write_text("older-" + name)
+        self.assert_started()
+        for name in ("config.toml", "auth.json"):
+            self.assertEqual((self.codex / name).read_text(), "current-" + name)
+            self.assertEqual((self.codex / (name + ".before-shared")).read_text(),
+                             "older-" + name)
+
+    def test_private_mode_restores_symlink_backups_without_following_them(self):
+        self.use_canonical_shared_fixture()
+        originals = {
+            "config.toml": self.root / "missing-private-config",
+            "auth.json": self.root / "private-auth",
+        }
+        originals["auth.json"].write_text("private-auth-fixture")
+        for name, original in originals.items():
+            (self.codex / name).symlink_to(original)
+        self.assert_started()
+        self.env.pop("CODEX_SHARED_DIR")  # Shared files remain mounted and untouched.
+        self.assert_started()
+        self.assert_started()
+        for name, original in originals.items():
+            self.assertEqual(os.readlink(self.codex / name), str(original))
+            self.assertEqual(os.readlink(self.codex / (name + ".before-shared")),
+                             str(original))
+        self.assertEqual(originals["auth.json"].read_text(), "private-auth-fixture")
+        self.assertEqual((self.shared / "auth.json").read_bytes(), self.auth)
 
     def test_private_mode_preserves_auth_and_sessions_without_shared_links(self):
         self.env.pop('CODEX_SHARED_DIR')

@@ -1,34 +1,33 @@
 #!/bin/sh
 set -eu
 : "${IMAGE:=agent-runtime:test}"
+# Inspect and pin an already-local image before any probe; never pull.
+IMAGE=$(docker image inspect "$IMAGE" --format '{{.Id}}')
 export IMAGE
 # Portable command timeout: macOS does not bundle GNU timeout.
 timeout() { python3 -c 'import subprocess,sys;
 try: sys.exit(subprocess.run(sys.argv[2:], timeout=float(sys.argv[1])).returncode)
 except subprocess.TimeoutExpired: sys.exit(124)' "$@"; }
-project="agent-smoke-$$"
-shared=$(mktemp -d)
+project="agent-smoke-$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
+shared=$(python3 tests/smoke_compose_owned.py init)
 export SHARED_CODEX_DIR="$shared/codex"
 reader_a=''
 reader_b=''
 shared_mode=false
-compose() {
-  p=$1; shift
-  if [ "$shared_mode" = true ]; then
-    HOME_DIR="$shared/$p-home" docker compose -f compose.yaml -f compose.bind-home.yaml -f tests/compose.yaml -f compose.shared-codex.yaml --env-file runtime.env.example -p "$p" "$@"
+docker() {
+  if [ "$1" = run ]; then
+    shift
+    python3 tests/smoke_compose_owned.py docker-run "$shared" "$@"
   else
-    HOME_DIR="$shared/$p-home" docker compose -f compose.yaml -f compose.bind-home.yaml -f tests/compose.yaml --env-file runtime.env.example -p "$p" "$@"
+    command docker "$@"
   fi
 }
+compose() {
+  p=$1; shift
+  python3 tests/smoke_compose_owned.py run "$shared" "$p" "$shared_mode" "$@"
+}
 cleanup() {
-  if [ -n "$reader_a" ]; then docker rm -f "$reader_a" >/dev/null 2>&1 || true; fi
-  if [ -n "$reader_b" ]; then docker rm -f "$reader_b" >/dev/null 2>&1 || true; fi
-  compose "$project-a" down --volumes --remove-orphans >/dev/null 2>&1 || true
-  compose "$project-b" down --volumes --remove-orphans >/dev/null 2>&1 || true
-  docker run --rm --network none --user 0:0 --entrypoint /bin/sh \
-    --mount "type=bind,src=$shared,dst=/fixture" "$IMAGE" -ec \
-    'rm -rf "$1" "$2"' cleanup "/fixture/$project-a-home" "/fixture/$project-b-home" >/dev/null
-  rm -rf "$shared"
+  python3 tests/smoke_compose_owned.py cleanup "$shared"
 }
 trap cleanup EXIT INT TERM
 # World-writable test fixture: EROFS must come from the mount, not UNIX modes.
@@ -58,6 +57,7 @@ for name, content in files.items():
 PY
 }
 write_codex_fixture before
+python3 tests/cleanup_uid_smoke.py
 sh -n entrypoint.sh
 sh -n bootstrap.sh
 sh -n agent-tools-path.sh
@@ -162,7 +162,7 @@ compose "$project-a" run --rm -T runtime python3 - after < tests/codex_skills_pr
 compose "$project-a" run --rm -T runtime python3 - after task < tests/codex_skills_probe.py
 # No credential: a real daemon must refuse startup, never fabricate a login.
 log=$(mktemp)
-if timeout 30 docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000,mode=700 --tmpfs /tmp --cap-drop ALL "$IMAGE" >"$log" 2>&1; then
+if timeout 30 python3 tests/smoke_compose_owned.py docker-run "$shared" --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000,mode=700 --tmpfs /tmp --cap-drop ALL "$IMAGE" >"$log" 2>&1; then
   cat "$log"; rm "$log"; exit 13
 else
   status=$?
@@ -170,4 +170,7 @@ else
   grep -qi 'not authenticated' "$log"
 fi
 rm "$log"
+# Exercise both explicit legacy bind storage and the default named-volume mode.
+SHARED_CACHE_IMAGE="$IMAGE" SHARED_CACHE_STORAGE=bind python3 tests/shared_cache_smoke.py
+SHARED_CACHE_IMAGE="$IMAGE" python3 tests/named_volume_smoke.py
 printf '%s\n' 'PASS: offline tools, Go race/CGO, Python venv, persistent private HOME/tools, UID1000/caps-zero, official Codex skills discovery, local Chromium navigation/PNG/concurrent idle cleanup, shared Codex atomic updates (not authentication), private auth and optional read-only Codex policy, missing-auth rejection.'

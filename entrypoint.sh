@@ -43,6 +43,35 @@ if [ -n "${CODEX_SHARED_DIR:-}" ]; then
     if [ -e "$target" ] || [ -L "$target" ]; then mv -n "$target" "$target.before-shared"; fi
     ln -s "$source" "$target"
   done
+else
+  # Only the fixed container mount is entrypoint-managed in private mode.
+  # Keep backups intact: they may be the only remaining private credentials.
+  # Preflight both names so an unsafe transition does not partly restore HOME.
+  for name in config.toml auth.json; do
+    target="$CODEX_HOME/$name"
+    if [ -L "$target" ] && [ "$(readlink "$target")" = "/shared/codex/$name" ]; then
+      backup="$target.before-shared"
+      if [ -e "$backup" ] && [ ! -L "$backup" ] && { [ ! -f "$backup" ] || [ ! -r "$backup" ]; }; then
+        printf 'Cannot restore private Codex backup %s: expected a readable file or symlink. Resolve it manually; the backup and shared links were preserved.\n' "$backup" >&2
+        exit 1
+      fi
+      if [ ! -e "$target.before-shared" ] && [ ! -L "$target.before-shared" ] && [ -e "$target" ]; then
+        printf 'Cannot restore private Codex file %s: no %s.before-shared backup. Set CODEX_SHARED_DIR=/shared/codex to keep sharing, or manually replace the link with private credentials.\n' "$target" "$target" >&2
+        exit 1
+      fi
+    fi
+  done
+  for name in config.toml auth.json; do
+    target="$CODEX_HOME/$name"
+    if [ -L "$target" ] && [ "$(readlink "$target")" = "/shared/codex/$name" ]; then
+      if [ -e "$target.before-shared" ] || [ -L "$target.before-shared" ]; then
+        rm "$target"
+        cp -P "$target.before-shared" "$target"
+      elif [ ! -e "$target" ]; then
+        rm "$target"
+      fi
+    fi
+  done
 fi
 if [ "${1##*/}" = multica ] && [ "${2:-}" = daemon ]; then
   if [ -n "${MULTICA_SERVER_URL:-}" ]; then multica config set server_url "$MULTICA_SERVER_URL"; fi

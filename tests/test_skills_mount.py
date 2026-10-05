@@ -40,9 +40,37 @@ class DeploymentTests(unittest.TestCase):
         smoke = (Path(__file__).resolve().parents[1] / 'tests/smoke.sh').read_text()
         self.assertNotIn('DATA_DIR', smoke)
         self.assertNotIn('tests/compose.readonly.yaml', smoke)
-        self.assertIn('HOME_DIR=', smoke)
-        self.assertIn('compose.shared-codex.yaml', smoke)
         self.assertIn('private-auth-fixture', smoke)
+        # Exercise the runner's real Compose resolution and generated create args,
+        # stopping before any Docker resource is created.
+        import sys
+        import tempfile
+        from unittest.mock import patch
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import smoke_compose_owned as runner
+        with tempfile.TemporaryDirectory() as parent:
+            resources = runner.Resources(lambda args: '')
+            fixture = str(resources.create_fixture(parent=parent))
+            (Path(fixture) / 'owned-resources.json').write_text(json.dumps({
+                'owner': resources.owner, 'containers': [], 'fixtures': resources.fixtures}))
+            shared = str(Path(fixture) / 'codex')
+            for enabled in ('false', 'true'):
+                with self.subTest(shared=enabled), patch.dict(os.environ, {'SHARED_CODEX_DIR': shared, 'IMAGE': 'example/runtime:test'}), \
+                     patch.object(sys, 'argv', ['runner', 'run', fixture, 'skills-probe', enabled, 'run', 'runtime', 'true']), \
+                     patch.object(runner.Resources, 'create_container', side_effect=RuntimeError('stop before create')) as create:
+                    with self.assertRaisesRegex(RuntimeError, 'stop before create'):
+                        runner.main()
+                    args = create.call_args.args[0]
+                    self.assertEqual(args[args.index('--network') + 1], 'none')
+                    mounts = [args[i + 1] for i, arg in enumerate(args) if arg == '--mount']
+                    self.assertIn('type=bind,src=' + fixture + '/skills-probe-home,dst=/home/agent', mounts)
+                    codex = 'type=bind,src=' + shared + ',dst=/shared/codex,readonly'
+                    if enabled == 'true':
+                        self.assertIn(codex, mounts)
+                        self.assertIn('CODEX_SHARED_DIR=/shared/codex', args)
+                    else:
+                        self.assertNotIn(codex, mounts)
+                        self.assertNotIn('CODEX_SHARED_DIR=/shared/codex', args)
 
     def test_current_product_docs_match_private_home_and_image_selection(self):
         from pathlib import Path

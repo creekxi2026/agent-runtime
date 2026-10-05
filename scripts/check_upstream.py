@@ -49,7 +49,7 @@ class Registry:
         return config["config"].get("Labels") or {}
 
 
-def platforms(index):
+def platforms(index, *, require_complete=True):
     result = {}
     for entry in index.get("manifests", []):
         platform = entry.get("platform", {})
@@ -59,9 +59,59 @@ def platforms(index):
                 raise ValueError("Duplicate target architecture")
             digest(entry["digest"])
             result[arch] = entry
-    if set(result) != ARCHES:
+    if require_complete and set(result) != ARCHES:
         raise ValueError("Image must contain linux/amd64 and linux/arm64")
     return result
+
+
+def publication_labels(registry, image):
+    """Incomplete known images rebuild; malformed data and fetch errors still fail."""
+    if not isinstance(image, dict) or image.get("schemaVersion") != 2:
+        raise ValueError("Invalid published image schema")
+    media_type = image.get("mediaType")
+    if media_type in ACCEPT.split(",")[:2]:
+        if not isinstance(image.get("manifests"), list):
+            raise ValueError("Invalid published image manifests")
+        for entry in image["manifests"]:
+            validate_descriptor(entry)
+            platform = entry.get("platform", {})
+            if not isinstance(platform, dict) or ("platform" in entry and any(
+                not isinstance(platform.get(key), str) or not platform[key]
+                for key in ("os", "architecture")
+            )):
+                raise ValueError("Invalid published image platform")
+        return {arch: registry.labels(entry)
+                for arch, entry in platforms(image, require_complete=False).items()}
+    if media_type in ACCEPT.split(",")[2:]:
+        validate_descriptor(image["config"])
+        if image["config"]["mediaType"] not in (
+            "application/vnd.oci.image.config.v1+json",
+            "application/vnd.docker.container.image.v1+json",
+        ) or not isinstance(image.get("layers"), list):
+            raise ValueError("Invalid published image manifest")
+        for layer in image["layers"]:
+            validate_descriptor(layer)
+        config, _ = registry.get("blobs/" + digest(image["config"]["digest"]))
+        if (not isinstance(config, dict) or not isinstance(config.get("config"), dict)
+                or not isinstance(config.get("os"), str) or not config["os"]
+                or not isinstance(config.get("architecture"), str) or not config["architecture"]):
+            raise ValueError("Invalid published image config")
+        labels = config["config"].get("Labels")
+        if labels is None:
+            labels = {}
+        if not isinstance(labels, dict):
+            raise ValueError("Invalid published image labels")
+        return {config["architecture"]: labels} if config["os"] == "linux" else {}
+    raise ValueError("Invalid published image media type")
+
+
+def validate_descriptor(entry):
+    if not isinstance(entry, dict):
+        raise ValueError("Invalid image descriptor")
+    digest(entry["digest"])
+    if (not isinstance(entry.get("mediaType"), str) or not entry["mediaType"]
+            or type(entry.get("size")) is not int or entry["size"] < 0):
+        raise ValueError("Invalid image descriptor media type or size")
 
 
 def requires_build(base_digest, revision, published_labels, dependency_digest=None):
@@ -96,9 +146,7 @@ def main():
             raise  # Never hide authentication, rate-limit or network failures.
         published_labels = {}
     else:
-        published_labels = {
-            arch: current.labels(entry) for arch, entry in platforms(published).items()
-        }
+        published_labels = publication_labels(current, published)
     version = Path("VERSION").read_text().strip()
     tag = f"{version}-build-{os.environ.get('GITHUB_RUN_ID', 'local')}-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}"
     if not re.fullmatch(r"[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}", tag):
