@@ -135,10 +135,15 @@ SHARED_CODEX_DIR=../shared-codex
 | `RUNTIME_IMAGE` | 选择镜像；默认 `ghcr.io/creekxi2026/agent-runtime:latest` |
 | `HOME_VOLUME` | 私有卷名；默认 `<COMPOSE_PROJECT_NAME>-home` |
 | `CPU_LIMIT`, `MEMORY_LIMIT` | 默认：`2` 个 CPU、`4g` 内存 |
+| `GOPROXY` | Go module 代理；默认 `https://proxy.golang.org,direct` |
+| `GOSUMDB` | Go 校验和数据库；默认 `sum.golang.org` |
+| `GOPRIVATE` | 可选的私有 module 路径匹配模式；默认留空 |
 | `MULTICA_SERVER_URL`, `MULTICA_APP_URL` | 留空连接 Multica Cloud；自托管时设置 |
 | `MULTICA_BOOTSTRAP_TOKEN` | 可选，用于替代 Multica 交互式登录 |
 | `MULTICA_DAEMON_MAX_CONCURRENT_TASKS` | 可选，守护进程级并发上限；不设置时使用 Multica 原生默认值，与 UI 中每个 Agent 的并发限制独立 |
 | `LARK_APP_ID`, `LARK_APP_SECRET`, `LARK_BRAND` | 可选，用于初始化 Lark 应用；brand 默认 `feishu` |
+
+Go module 下载在通用模板中默认使用官方代理。需要时可在实例的 `.env` 中设置 `GOPROXY=https://goproxy.cn,direct`；保留 `GOSUMDB=sum.golang.org`，继续校验公共 module 的校验和。逗号分隔的代理列表仅在收到 HTTP `404` 或 `410` 时回退，超时和其他错误不会触发回退。`GOPRIVATE` 仅填写自己的私有 module 路径匹配模式；匹配的 module 会绕过代理和校验和数据库。这些设置留空或未设置时，Compose 使用上述默认值。修改后需重建容器，重启不会重新加载 `.env`。
 
 启动入口会短暂使用 root 初始化私有目录，随后清除 capabilities，以 UID/GID `1000:1000` 运行应用。Compose 为兼容 Codex 内层沙箱而放宽 seccomp/AppArmor，但不会启用 privileged 模式或挂载 Docker socket。这**不是面向不可信租户的强隔离边界**。
 

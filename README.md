@@ -135,10 +135,15 @@ See [runtime.env.example](runtime.env.example) for available settings and [compo
 | `RUNTIME_IMAGE` | Image selection; defaults to `ghcr.io/creekxi2026/agent-runtime:latest` |
 | `HOME_VOLUME` | Private volume name; defaults to `<COMPOSE_PROJECT_NAME>-home` |
 | `CPU_LIMIT`, `MEMORY_LIMIT` | Defaults: `2` CPUs and `4g` memory |
+| `GOPROXY` | Go module proxy; defaults to `https://proxy.golang.org,direct` |
+| `GOSUMDB` | Go checksum database; defaults to `sum.golang.org` |
+| `GOPRIVATE` | Optional private module path patterns; blank by default |
 | `MULTICA_SERVER_URL`, `MULTICA_APP_URL` | Leave blank for Multica Cloud; set for self-hosting |
 | `MULTICA_BOOTSTRAP_TOKEN` | Optional alternative to interactive Multica login |
 | `MULTICA_DAEMON_MAX_CONCURRENT_TASKS` | Optional daemon-wide limit; unset uses Multica's native default, independently of the UI's per-Agent concurrency limit |
 | `LARK_APP_ID`, `LARK_APP_SECRET`, `LARK_BRAND` | Optional Lark application initialization; brand defaults to `feishu` |
+
+For Go module downloads, the global template uses the official proxy. If needed, set `GOPROXY=https://goproxy.cn,direct` in the instance's `.env`; keep `GOSUMDB=sum.golang.org` to preserve public-module checksum verification. Comma-separated proxy fallback proceeds only on HTTP `404` or `410`, not timeouts or other errors. Set `GOPRIVATE` only for your private module path patterns; matching modules bypass both the proxy and checksum database. Compose uses the documented defaults when these settings are blank or unset. Recreate the container to apply changes; a restart does not reload `.env`.
 
 The startup entrypoint briefly uses root to initialize private directories, then runs the application as UID/GID `1000:1000` with capabilities cleared. Compose relaxes seccomp/AppArmor for Codex's inner sandbox, but does not enable privileged mode or mount the Docker socket. This is **not a strong isolation boundary for untrusted tenants**.
 

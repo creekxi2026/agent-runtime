@@ -1,9 +1,9 @@
-name: ${COMPOSE_PROJECT_NAME:?请在 .env 填写唯一实例名}
+name: ${COMPOSE_PROJECT_NAME:?Set a unique instance name in .env}
 services:
   runtime:
     init: false
     image: ${RUNTIME_IMAGE:-ghcr.io/creekxi2026/agent-runtime:latest}
-    # root 仅初始化目录；随后降为 1000:1000 并清除 capabilities。
+    # Root initializes directories, then drops to 1000:1000 and clears capabilities.
     user: "0:0"
     working_dir: /home/agent
     environment:
@@ -13,12 +13,15 @@ services:
       LARK_APP_ID: ${LARK_APP_ID:-}
       LARK_APP_SECRET: ${LARK_APP_SECRET:-}
       LARK_BRAND: ${LARK_BRAND:-feishu}
+      GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+      GOSUMDB: ${GOSUMDB:-sum.golang.org}
+      GOPRIVATE: ${GOPRIVATE:-}
       MULTICA_DAEMON_DEVICE_NAME: ${COMPOSE_PROJECT_NAME}
       MULTICA_AGENT_RUNTIME_NAME: ${COMPOSE_PROJECT_NAME}
-      # 仅透传显式设置；未设置时由 Multica 决定并发数。
+      # Pass only explicit overrides; otherwise Multica selects concurrency.
       MULTICA_DAEMON_MAX_CONCURRENT_TASKS:
     volumes:
-      # HOME 按实例隔离；nocopy 避免复制镜像内的 HOME。
+      # Private HOME per instance; nocopy avoids copying the image HOME.
       - type: volume
         source: agent-home
         target: /home/agent
@@ -29,8 +32,8 @@ services:
     tmpfs: [/tmp]
     cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, SETPCAP]
-    # 仅放宽本容器的 seccomp/AppArmor，以兼容 Codex 内层沙箱。
-    # 不启用 privileged 或 SYS_ADMIN，不修改宿主机全局设置。
+    # Relax only this container's seccomp/AppArmor for Codex's inner sandbox.
+    # No privileged mode, SYS_ADMIN or global host changes.
     security_opt:
       - no-new-privileges:true
       - seccomp=unconfined
