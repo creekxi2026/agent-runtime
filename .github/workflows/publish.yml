@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
+      compose_version: ${{ steps.compose-version.outputs.version }}
       changed: ${{ steps.upstream.outputs.changed }}
       base_image: ${{ steps.upstream.outputs.base_image }}
       base_digest: ${{ steps.upstream.outputs.base_digest }}
@@ -22,6 +23,13 @@ jobs:
       dependency_digest: ${{ steps.upstream.outputs.dependency_digest }}
     steps:
       - uses: actions/checkout@v7
+      - name: Install latest stable Compose
+        uses: docker/setup-compose-action@54042514f505b273907334ae2b9cdbb9a0213c1a # v2.4.0
+        with:
+          version: latest
+      - name: Record Compose version for build jobs
+        id: compose-version
+        run: version=$(docker compose version --short) && echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Unit tests
         run: python3 -m unittest discover -s tests -p 'test_*.py'
       - name: Resolve upstream and compare published image
@@ -59,6 +67,10 @@ jobs:
       DEPENDENCY_DIGEST: ${{ needs.check.outputs.dependency_digest }}
     steps:
       - uses: actions/checkout@v7
+      - name: Install the Compose version tested by check
+        uses: docker/setup-compose-action@54042514f505b273907334ae2b9cdbb9a0213c1a # v2.4.0
+        with:
+          version: ${{ needs.check.outputs.compose_version }}
       - uses: docker/setup-buildx-action@v4
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
