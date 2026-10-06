@@ -149,6 +149,14 @@ Go module 下载在通用模板中默认使用官方代理。需要时可在实�
 
 ## 使用
 
+### 办公用户首次对话
+
+仓库提供一次性引导技能 [`agent-office-setup`](skills/agent-office-setup/SKILL.md)。管理员先完成容器、Multica 和模型认证，再按[接入手册](skills/agent-office-setup/references/activation.md)把技能复制到该用户的私有 HOME，并配置办公 Agent 的首次对话指令。现有镜像可直接使用，无需重建。
+
+技能根据需求安装私有 Python 文档处理环境，引导本人授权，验证一项实际办公任务。成功后记录完成状态并删除该 HOME 中的技能副本；失败保留以便续接。源码模板与办公环境保留。它不随镜像内置技能分发，也不自动创建 Agent；仅复制文件不能保证首次对话触发，必须完成指令配置和真实首聊验收。
+
+### 容器内工具
+
 以应用用户身份进入 shell：
 
 ```bash

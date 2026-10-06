@@ -149,6 +149,14 @@ The startup entrypoint briefly uses root to initialize private directories, then
 
 ## Usage
 
+### First conversation for office users
+
+The repository includes the one-time [`agent-office-setup`](skills/agent-office-setup/SKILL.md) skill. After provisioning the container and authenticating Multica and the model, follow the [activation guide](skills/agent-office-setup/references/activation.md) to copy the skill into that user's private HOME and configure the office agent's first-conversation instructions. This works with the existing image; no image rebuild is needed.
+
+The skill installs only selected document libraries in a private Python environment, guides the user's authorization, and requires a real office task before completion. It records completion before removing its private skill copy; failures remain resumable. The source template and installed environment are retained. It is not bundled as an image-managed skill and does not create an agent. Copying the files alone does not guarantee invocation: configure the instructions and verify the first conversation with the real user.
+
+### Container tools
+
 Open a shell as the application user:
 
 ```bash
