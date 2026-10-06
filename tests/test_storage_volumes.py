@@ -50,7 +50,8 @@ class StorageTests(unittest.TestCase):
             mount = mounts['/shared/codex/' + name]
             self.assertEqual(mount['source'], '/fixture/codex/' + name)
             self.assertTrue(mount['read_only'])
-            self.assertFalse(mount['bind']['create_host_path'])
+            # Compose versions may omit false/default fields from config JSON.
+            self.assertFalse(mount.get('bind', {}).get('create_host_path', False))
 
     def test_template_can_select_private_caches(self):
         cfg = resolve_template('storage-a', COMPOSE_FILE='compose.yaml')
