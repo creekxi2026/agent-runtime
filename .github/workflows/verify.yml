@@ -24,7 +24,7 @@ jobs:
           version: latest
       - name: Record Compose version for verification jobs
         id: compose-version
-        run: version=$(docker compose version --short) && echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: version=$(docker compose version --short) && echo "version=v${version#v}" >> "$GITHUB_OUTPUT"
       - run: python3 -m unittest discover -s tests -p 'test_*.py'
       - id: base
         env:

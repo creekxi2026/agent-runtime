@@ -29,7 +29,7 @@ jobs:
           version: latest
       - name: Record Compose version for build jobs
         id: compose-version
-        run: version=$(docker compose version --short) && echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: version=$(docker compose version --short) && echo "version=v${version#v}" >> "$GITHUB_OUTPUT"
       - name: Unit tests
         run: python3 -m unittest discover -s tests -p 'test_*.py'
       - name: Resolve upstream and compare published image
