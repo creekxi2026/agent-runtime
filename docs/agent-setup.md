@@ -42,6 +42,7 @@ Python 依赖装到实例私有 HOME 下的虚拟环境，例如 `$HOME/.local/s
 | 配置 | 默认处理 |
 | --- | --- |
 | HOME、权限、工具路径 | 镜像入口负责初始化，Compose 提供独立 HOME 卷 |
+| 下载缓存 | 默认启用 `compose.shared-cache.yaml`，所有实例共用 Docker/OrbStack 卷 `agent-runtime-download-cache`，挂到 `/shared/caches` |
 | 官方技能、浏览器配置 | 镜像入口自动链接 |
 | 容器重启策略 | Compose 已设置 `unless-stopped` |
 | 资源 | 2 CPU、4 GiB；按用途和主机容量调整 |
@@ -52,6 +53,8 @@ Python 依赖装到实例私有 HOME 下的虚拟环境，例如 `$HOME/.local/s
 
 Agent 并发是 Multica 服务端字段，不能通过镜像 ENV 修改。Multica 0.6.1 的平台默认值为 6，接受 1–50；这里主动设为 50，仍是上限。升级 CLI 后核对取值范围，不改其他已有 Agent 的并发。
 
+共享下载缓存适合同一主机上的可信实例，只包含 npm、Go module 和 uv 缓存。用户工具、虚拟环境、凭据和会话仍在各自 HOME 中。需要隔离缓存时，使用单独的 `SHARED_CACHE_VOLUME`，或从 `COMPOSE_FILE` 移除缓存 override。无需再创建宿主机 `shared/caches` 目录。
+
 如果用户要求容器也使用指定名字，准备 `container_name` override。只设置 `COMPOSE_PROJECT_NAME` 时，Compose 通常生成 `<instance-name>-runtime-1`。
 
 安装前向用户说明：部署位置和名称、用途、需要补装的软件及版本、账号与模型来源、资源和存储配置、是否创建 Agent，以及准备怎样测试。凭据只说明来源。拿到确认后执行；范围有变化时只补充确认变化的部分。
@@ -59,7 +62,7 @@ Agent 并发是 Multica 服务端字段，不能通过镜像 ENV 修改。Multic
 ## 部署
 
 1. 检查目标机器的 Docker、Compose、架构和资源，确认目录、容器和数据卷没有重名冲突。已有资源先核对归属，保留其中的数据。
-2. 准备独立部署目录、Compose 文件和私有 `.env`，不要覆盖已有配置。先确定 HOME 存储和 `COMPOSE_FILE`，后面的登录、安装和启动都使用这套参数；更换挂载不会自动搬迁数据。
+2. 准备独立部署目录，下载 `compose.yaml`、`compose.shared-cache.yaml` 和环境变量模板，保存私有 `.env`，不要覆盖已有配置。先确定 HOME 存储和 `COMPOSE_FILE`，后面的登录、安装和启动都使用这套参数；更换挂载不会自动搬迁数据。
 3. 使用已确认的镜像并记录实际 digest。配置模型认证和 Multica 登录，具体方式见下节。
 4. 以容器用户 `1000:1000` 安装缺少的工具，保存在私有 HOME 中。记录版本，避免把依赖误装到部署 Agent 的宿主机上。
 5. 执行 `docker compose up -d`，检查状态和脱敏日志。需要飞书或网站授权时，由对应用户完成。
