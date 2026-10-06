@@ -103,6 +103,7 @@ Then set the following values in `.env`:
 | Shared cache volume | [compose.shared-cache.yaml](compose.shared-cache.yaml) | `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml`; optionally set `SHARED_CACHE_VOLUME` |
 | Shared cache bind | [compose.shared-cache.yaml](compose.shared-cache.yaml), then [compose.shared-cache.bind.yaml](compose.shared-cache.bind.yaml) | `SHARED_CACHE_DIR=../shared/caches`; `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.shared-cache.bind.yaml` |
 | Read-only shared Codex | [compose.shared-codex.yaml](compose.shared-codex.yaml) | `SHARED_CODEX_DIR=../shared-codex`; `COMPOSE_FILE=compose.yaml:compose.shared-codex.yaml` |
+| Two files from an existing Codex directory | [compose.shared-codex-files.yaml](compose.shared-codex-files.yaml) | Set `SHARED_CODEX_DIR` to the authorized Codex directory; `COMPOSE_FILE=compose.yaml:compose.shared-codex-files.yaml` |
 
 **Ordering matters:** put `compose.yaml` first and each bind override after the corresponding named-volume configuration. On Windows, use `;` instead of `:` as the `COMPOSE_FILE` separator. Once set, use ordinary `docker compose` commands for login, startup, shells and updates; do not supply a separate `-f` list that omits your overrides.
 
@@ -130,6 +131,8 @@ Before any login or startup command, create a **dedicated directory** containing
 Only these two files are linked into private Codex state. **Do not share the entire `.codex` directory**; sessions and caches stay in private HOME. Existing private files are backed up with the `.before-shared` suffix; startup refuses to overwrite conflicting backups.
 
 This mode supports **API keys only**, not ChatGPT OAuth credentials that require refresh writes. All participating instances can read the shared key; read-only access is not confidentiality. Skip `codex login/logout`. Atomic replacement of the shared files makes them available to subsequent reads, but does not guarantee live updates for in-flight tasks. Shared defaults are not an enforced policy.
+
+To reuse an existing `.codex` configuration with its owner's authorization, use `compose.shared-codex-files.yaml` **instead of** the directory override. It mounts only `config.toml` and `auth.json`; no separate shared directory is needed. Do not enable both Codex overrides. Files must be readable by the container user without loosening host credential permissions. Single-file binds can retain the old file after an atomic host replacement: wait for tasks to finish, run `docker compose up -d --force-recreate`, and verify a new task. Check host-specific paths, plugins, and other settings for container compatibility.
 
 ## Configuration
 

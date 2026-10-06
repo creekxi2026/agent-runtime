@@ -1,0 +1,19 @@
+# Share only these two authorized files; keep sessions and other state private.
+# Recreate the container after the host atomically replaces a source file.
+services:
+  runtime:
+    environment:
+      CODEX_SHARED_DIR: /shared/codex
+    volumes:
+      - type: bind
+        source: ${SHARED_CODEX_DIR:?Set SHARED_CODEX_DIR in .env}/config.toml
+        target: /shared/codex/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SHARED_CODEX_DIR:?Set SHARED_CODEX_DIR in .env}/auth.json
+        target: /shared/codex/auth.json
+        read_only: true
+        bind:
+          create_host_path: false

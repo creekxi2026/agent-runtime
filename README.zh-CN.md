@@ -103,6 +103,7 @@ curl -fL "$SOURCE/compose.bind-home.yaml" -o compose.bind-home.yaml
 | 共享缓存卷 | [compose.shared-cache.yaml](compose.shared-cache.yaml) | `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml`; 可选设置 `SHARED_CACHE_VOLUME` |
 | 共享缓存 bind 挂载 | [compose.shared-cache.yaml](compose.shared-cache.yaml)，然后是 [compose.shared-cache.bind.yaml](compose.shared-cache.bind.yaml) | `SHARED_CACHE_DIR=../shared/caches`; `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.shared-cache.bind.yaml` |
 | 只读共享 Codex | [compose.shared-codex.yaml](compose.shared-codex.yaml) | `SHARED_CODEX_DIR=../shared-codex`; `COMPOSE_FILE=compose.yaml:compose.shared-codex.yaml` |
+| 只读挂载已有 Codex 的两个文件 | [compose.shared-codex-files.yaml](compose.shared-codex-files.yaml) | `SHARED_CODEX_DIR` 指向获准的 Codex 配置目录；`COMPOSE_FILE=compose.yaml:compose.shared-codex-files.yaml` |
 
 **文件顺序很重要：** `compose.yaml` 必须排在最前，每个 bind override 必须放在对应的命名卷配置之后。Windows 上，`COMPOSE_FILE` 用 `;` 分隔，而不是 `:`。设置后，登录、启动、进入 shell 和更新都使用普通 `docker compose` 命令；不要另传一份遗漏 override 的 `-f` 列表。
 
@@ -130,6 +131,8 @@ SHARED_CODEX_DIR=../shared-codex
 只有这两个文件会链接到私有 Codex 状态目录。**不要共享整个 `.codex` 目录**；会话和缓存仍保存在私有 HOME。已有私有文件会以 `.before-shared` 后缀备份；若备份冲突，启动会拒绝覆盖。
 
 此模式**仅支持 API key**，不支持需要刷新写入的 ChatGPT OAuth 凭据。所有参与共享的实例都能读取密钥；只读不等于保密。跳过 `codex login/logout`。原子替换共享文件后，后续读取可以获得新内容，但不能保证正在执行的任务实时更新。共享默认配置不是强制策略。
+
+如果用户已授权复用现有 `.codex` 中的配置，使用 `compose.shared-codex-files.yaml` **替代**目录挂载 override，仅挂载 `config.toml` 与 `auth.json`，无需另建共享目录。不要同时启用这两个 Codex override。文件须可由容器用户读取；不要为此放宽宿主机凭据权限。单文件 bind 在宿主机原子替换文件后可能仍指向旧文件，待任务结束后执行 `docker compose up -d --force-recreate`，再验证新任务。主机专用路径、插件或其他配置也需检查容器兼容性。
 
 ## 配置
 

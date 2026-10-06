@@ -33,6 +33,7 @@
 | CSV/JSON | Python 标准库 | 无需额外包 |
 | 本地 Excel | Python | 可选 openpyxl；不等同于 Excel 公式重算/渲染 |
 | 本地 Word | Python | 可选 python-docx；不保证完整排版渲染 |
+| 成果展示 PPT | Python | 可选 python-pptx，生成可编辑 PPTX；重新读取不等于已验证 PowerPoint 最终渲染 |
 | PDF | Python | 按读取/合并、生成、渲染、OCR 分别选择工具，不把它们视为同一能力 |
 | 格式转换、演示文稿、数据分析 | 现有运行环境 | 依据具体任务选型，不默认装完整桌面或开发套件 |
 
@@ -91,15 +92,19 @@ Multica 服务 / 工作区 / 登录身份与方式（不含秘密）：
 
 ### 已有共享模型配置
 
-用户要求关联共享目录时，先核对现有部署的挂载或已知共享位置。**下载缓存目录不是模型认证目录。** 来源必须是已获准共享、包含可读 `config.toml` 和 API-key 模式 `auth.json` 的专用目录；没有找到时只询问具体路径，不猜测其他用户的私有 HOME，也不从旧备份或临时目录提取凭据。
+用户要求关联共享目录时，先核对现有部署的 Compose、实际挂载或已知共享位置。**下载缓存目录不是模型认证目录。** 来源必须包含可读 `config.toml` 和 API-key 模式 `auth.json`。用户已指定复用现有 `.codex` 时，检查该来源并继续，不再要求建立专用共享目录或再次确认相同授权；没有指定来源且无法定位时才询问路径，不猜测其他用户的私有 HOME，也不从旧备份或临时目录提取凭据。
 
 复用仓库的 `compose.shared-codex.yaml`，把它加入该实例现有的 `COMPOSE_FILE`，保留已有 override，并设置 `SHARED_CODEX_DIR` 指向经过核验的来源。只读挂载由入口链接两个配置文件；会话和工作文件继续使用实例私有 HOME。不要挂载整个 `.codex`，也不要共享会刷新令牌的 OAuth 登录状态。检查配置时仅输出认证类型、文件是否存在等必要元数据，不打印密钥。
+
+来源是已有 `.codex` 时，改用 [compose.shared-codex-files.yaml](../compose.shared-codex-files.yaml)，只挂载两个文件；与目录挂载 override 二选一。不要用只读挂载整个目录代替文件隔离。单文件 bind 需要在宿主机原子替换配置/密钥后重建容器，不能承诺所有更新即时生效。
 
 变更前确认该实例没有运行中的任务；Compose 校验后只重建目标实例。核验只读挂载、两个链接、真实模型调用及重建后持久化，不能以 `codex login status` 或 Runtime 在线代替真实任务成功。缺少共享来源路径时可准备 override 文件，但不启用无效挂载。
 
 在**目标容器**中按其已安装版本的 `multica workspace --help`、`multica workspace list` 和 `multica workspace switch --help` 核对并选择默认工作区；再核对目标空间的 Runtime 在线状态。当前 CLI 登录会自动发现账号可访问的工作区，`workspace switch` 只改变默认工作区，**不构成“仅连接这个空间”的限制**。如果用户要求只供一个空间使用，应检查实际 Runtime 可见性和账号权限，不能仅凭默认工作区已切换就宣称隔离完成。
 
 上述登录和配置针对新实例独立的用户配置。不得在执行本次任务的 Agent 环境中切换宿主机用户的 Multica profile、停止当前 daemon，或借用宿主机所有者凭据。
+
+替换 Multica 登录凭据后，重新核对实际账号和发现的工作区；不同账号可能对应完全不同的工作区。按新身份重新注册 Runtime 并配置 Agent，不沿用旧空间的 ID。若旧测试 Agent 是本次部署创建且没有任务，可归档以免误用。服务端返回 `401 invalid token` 时，仅使用用户明确提供的新凭据重新登录，不替换成共享模型 key，也不借用其他实例的 Multica 登录。
 
 ## 5. 验收、交付并结束
 
