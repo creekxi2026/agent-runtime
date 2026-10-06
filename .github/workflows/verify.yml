@@ -13,10 +13,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
+      compose_version: ${{ steps.compose-version.outputs.version }}
       base_image: ${{ steps.base.outputs.base_image }}
       dependency_digest: ${{ steps.base.outputs.dependency_digest }}
     steps:
       - uses: actions/checkout@v7
+      - name: Install latest stable Compose
+        uses: docker/setup-compose-action@54042514f505b273907334ae2b9cdbb9a0213c1a # v2.4.0
+        with:
+          version: latest
+      - name: Record Compose version for verification jobs
+        id: compose-version
+        run: version=$(docker compose version --short) && echo "version=$version" >> "$GITHUB_OUTPUT"
       - run: python3 -m unittest discover -s tests -p 'test_*.py'
       - id: base
         env:
@@ -47,6 +55,10 @@ jobs:
       DEPENDENCY_DIGEST: ${{ needs.resolve.outputs.dependency_digest }}
     steps:
       - uses: actions/checkout@v7
+      - name: Install the Compose version tested by resolve
+        uses: docker/setup-compose-action@54042514f505b273907334ae2b9cdbb9a0213c1a # v2.4.0
+        with:
+          version: ${{ needs.resolve.outputs.compose_version }}
       - uses: docker/setup-buildx-action@v4
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
