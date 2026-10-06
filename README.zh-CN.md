@@ -13,6 +13,12 @@
 
 [快速开始](#快速开始) · [存储](#存储) · [配置](#配置) · [使用](#使用) · [更新](#更新) · [开发](#开发)
 
+## 让 Agent 帮你配置
+
+让已有 Agent 阅读独立的[用户运行环境配置指引](docs/agent-setup.md)。它会依次确认实例名、用途、Multica 工作区及认证参数，核对已有软件并提出增装清单，等你确认后部署、验证并交付。无需安装引导 Skill；可直接说：
+
+> 阅读这个仓库的 docs/agent-setup.md，为用户配置一个运行环境，先给我软件和部署方案。
+
 ## 快速开始
 
 需要 Docker Engine、Docker Compose v2，以及可访问的 Multica 和模型服务。
@@ -148,14 +154,6 @@ Go module 下载在通用模板中默认使用官方代理。需要时可在实�
 启动入口会短暂使用 root 初始化私有目录，随后清除 capabilities，以 UID/GID `1000:1000` 运行应用。Compose 为兼容 Codex 内层沙箱而放宽 seccomp/AppArmor，但不会启用 privileged 模式或挂载 Docker socket。这**不是面向不可信租户的强隔离边界**。
 
 ## 使用
-
-### 办公用户首次对话
-
-仓库提供一次性引导技能 [`agent-office-setup`](skills/agent-office-setup/SKILL.md)。管理员先完成容器、Multica 和模型认证，再按[接入手册](skills/agent-office-setup/references/activation.md)把技能复制到该用户的私有 HOME，并配置办公 Agent 的首次对话指令。现有镜像可直接使用，无需重建。
-
-技能根据需求安装私有 Python 文档处理环境，引导本人授权，验证一项实际办公任务。成功后记录完成状态并删除该 HOME 中的技能副本；失败保留以便续接。源码模板与办公环境保留。它不随镜像内置技能分发，也不自动创建 Agent；仅复制文件不能保证首次对话触发，必须完成指令配置和真实首聊验收。
-
-### 容器内工具
 
 以应用用户身份进入 shell：
 

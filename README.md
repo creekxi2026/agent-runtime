@@ -13,6 +13,12 @@ Image: `ghcr.io/creekxi2026/agent-runtime:latest` for `linux/amd64` and `linux/a
 
 [Quick Start](#quick-start) · [Storage](#storage) · [Configuration](#configuration) · [Usage](#usage) · [Updates](#updates) · [Development](#development)
 
+## Agent-guided setup
+
+Ask an existing agent to read the standalone [user runtime setup guide](docs/agent-setup.md) (Chinese). It collects the instance name, purpose, Multica workspace and authentication details, proposes software additions, and waits for your approval before deploying and verifying the instance. No onboarding skill installation is required. For example:
+
+> Read docs/agent-setup.md in this repository and configure a runtime for a user. Present the software and deployment plan first.
+
 ## Quick Start
 
 You need Docker Engine, Docker Compose v2, and access to Multica and a model service.
@@ -148,14 +154,6 @@ For Go module downloads, the global template uses the official proxy. If needed,
 The startup entrypoint briefly uses root to initialize private directories, then runs the application as UID/GID `1000:1000` with capabilities cleared. Compose relaxes seccomp/AppArmor for Codex's inner sandbox, but does not enable privileged mode or mount the Docker socket. This is **not a strong isolation boundary for untrusted tenants**.
 
 ## Usage
-
-### First conversation for office users
-
-The repository includes the one-time [`agent-office-setup`](skills/agent-office-setup/SKILL.md) skill. After provisioning the container and authenticating Multica and the model, follow the [activation guide](skills/agent-office-setup/references/activation.md) to copy the skill into that user's private HOME and configure the office agent's first-conversation instructions. This works with the existing image; no image rebuild is needed.
-
-The skill installs only selected document libraries in a private Python environment, guides the user's authorization, and requires a real office task before completion. It records completion before removing its private skill copy; failures remain resumable. The source template and installed environment are retained. It is not bundled as an image-managed skill and does not create an agent. Copying the files alone does not guarantee invocation: configure the instructions and verify the first conversation with the real user.
-
-### Container tools
 
 Open a shell as the application user:
 
