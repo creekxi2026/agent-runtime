@@ -7,11 +7,17 @@ A Docker-based development runtime for Codex and Multica, with a persistent priv
 - **Ready-to-use tools:** Codex, Multica, Lark CLI, miniprogram-ci, Playwright CLI and Chromium, plus official Playwright and Lark skills.
 - **Development toolchain:** Go, Node.js/npm/pnpm, Python/uv, C/C++, Git, gh, SSH and rsync.
 - **Persistent user state:** projects, credentials, sessions, user-installed tools and custom skills stay in HOME across container recreation.
-- **Optional sharing:** download caches and read-only Codex API-key configuration, without sharing HOME.
+- **Shared downloads:** a Docker/OrbStack cache volume by default, with optional read-only Codex API-key sharing and private HOME.
 
 Image: `ghcr.io/creekxi2026/agent-runtime:latest` for `linux/amd64` and `linux/arm64`. Install project dependencies separately from their lockfiles. The image does not include application code, Docker/Podman or database servers.
 
 [Quick Start](#quick-start) · [Storage](#storage) · [Configuration](#configuration) · [Usage](#usage) · [Updates](#updates) · [Development](#development)
+
+## Agent-guided setup
+
+Ask an existing agent to read the standalone [user runtime setup guide](docs/agent-setup.md) (Chinese). It collects the instance name, purpose, Multica workspace and authentication details, proposes software additions, and waits for your approval before deploying and verifying the instance. No onboarding skill installation is required. For example:
+
+> Read docs/agent-setup.md in this repository and configure a runtime for a user. Present the software and deployment plan first.
 
 ## Quick Start
 
@@ -19,13 +25,14 @@ You need Docker Engine, Docker Compose v2, and access to Multica and a model ser
 
 ### 1. Prepare an instance
 
-A new instance needs only the Compose file and environment file:
+Download the base Compose file, the shared-cache override, and the environment template:
 
 ```bash
 mkdir -p agent-runtime/user01
 cd agent-runtime/user01
 SOURCE=https://raw.githubusercontent.com/creekxi2026/agent-runtime/main
 curl -fL "$SOURCE/compose.yaml" -o compose.yaml
+curl -fL "$SOURCE/compose.shared-cache.yaml" -o compose.shared-cache.yaml
 curl -fL "$SOURCE/runtime.env.example" -o .env
 chmod 600 .env
 ```
@@ -34,7 +41,7 @@ Edit `.env` and give `COMPOSE_PROJECT_NAME` a **unique instance name**. Keep cre
 
 ### 2. Choose storage before logging in
 
-The default is a private Docker-managed HOME volume, with no shared mounts. If that suits your instance, continue below. For a host-directory HOME, shared caches or shared Codex credentials, **complete [Storage](#storage) first**, including the override downloads and `COMPOSE_FILE` setting. Login commands initialize the selected HOME; changing storage later does not migrate those files.
+The environment template gives each instance a private HOME volume and shares the Docker-managed `agent-runtime-download-cache` volume. No host cache directory is needed. For a host-directory HOME, a different cache source, or shared Codex credentials, **complete [Storage](#storage) first**, including the override downloads and `COMPOSE_FILE` setting. Login commands initialize the selected HOME; changing storage later does not migrate those files.
 
 ### 3. Authenticate
 
@@ -75,7 +82,7 @@ Relative bind paths are resolved from the directory containing the first Compose
 | Data | Source | Container path | Access |
 | --- | --- | --- | --- |
 | Private HOME | Named volume `<COMPOSE_PROJECT_NAME>-home`, or `HOME_VOLUME`; optional bind via `HOME_DIR` | `/home/agent` | Read/write |
-| Download caches | Private HOME by default; optional volume `agent-runtime-download-cache` or bind via `SHARED_CACHE_DIR` | `/shared/caches` when enabled | Read/write |
+| Download caches | Template default: volume `agent-runtime-download-cache`; another volume or explicit bind is also supported | `/shared/caches` when enabled | Read/write |
 | Shared Codex configuration | Optional dedicated directory via `SHARED_CODEX_DIR` | `/shared/codex` | Read-only |
 
 HOME holds configuration, credentials, sessions, `workspace`, user-installed tools and custom skills. **Never reuse HOME across independent instances**, including when setting `HOME_VOLUME`. Image-managed tools live under `/opt`; the HOME volume uses `nocopy`, so it does not copy image HOME contents into persistent storage.
@@ -88,15 +95,16 @@ Download each required override from the same `SOURCE` URL used in Quick Start a
 curl -fL "$SOURCE/compose.bind-home.yaml" -o compose.bind-home.yaml
 ```
 
-Then set the following values in `.env`:
+The examples below retain the shared cache override downloaded in Quick Start, except when selecting private caches. Set the following values in `.env`:
 
 | Storage choice | Required override files | Environment settings |
 | --- | --- | --- |
-| Default private HOME volume | None | Leave `COMPOSE_FILE` unset |
-| Private HOME bind | [compose.bind-home.yaml](compose.bind-home.yaml) | `HOME_DIR=./home`; `COMPOSE_FILE=compose.yaml:compose.bind-home.yaml` |
-| Shared cache volume | [compose.shared-cache.yaml](compose.shared-cache.yaml) | `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml`; optionally set `SHARED_CACHE_VOLUME` |
+| Private HOME and private caches | None | Set `COMPOSE_FILE=compose.yaml` |
+| Private HOME bind | [compose.bind-home.yaml](compose.bind-home.yaml) | `HOME_DIR=./home`; `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.bind-home.yaml` |
+| Default: private HOME + shared cache volume | [compose.shared-cache.yaml](compose.shared-cache.yaml) | `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml`; optionally set `SHARED_CACHE_VOLUME` |
 | Shared cache bind | [compose.shared-cache.yaml](compose.shared-cache.yaml), then [compose.shared-cache.bind.yaml](compose.shared-cache.bind.yaml) | `SHARED_CACHE_DIR=../shared/caches`; `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.shared-cache.bind.yaml` |
-| Read-only shared Codex | [compose.shared-codex.yaml](compose.shared-codex.yaml) | `SHARED_CODEX_DIR=../shared-codex`; `COMPOSE_FILE=compose.yaml:compose.shared-codex.yaml` |
+| Read-only shared Codex | [compose.shared-codex.yaml](compose.shared-codex.yaml) | `SHARED_CODEX_DIR=../shared-codex`; `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.shared-codex.yaml` |
+| Two files from an existing Codex directory | [compose.shared-codex-files.yaml](compose.shared-codex-files.yaml) | Set `SHARED_CODEX_DIR` to the authorized Codex directory; `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.shared-codex-files.yaml` |
 
 **Ordering matters:** put `compose.yaml` first and each bind override after the corresponding named-volume configuration. On Windows, use `;` instead of `:` as the `COMPOSE_FILE` separator. Once set, use ordinary `docker compose` commands for login, startup, shells and updates; do not supply a separate `-f` list that omits your overrides.
 
@@ -121,9 +129,11 @@ Share only among mutually trusted Linux containers using the same UID. Container
 
 Before any login or startup command, create a **dedicated directory** containing `config.toml` and `auth.json`, readable by UID/GID `1000:1000`. Use the [configuration template](shared-codex/config.toml.example) and [authentication template](shared-codex/auth.json.example) as a starting point. A missing source directory is not created automatically.
 
-Only these two files are linked into private Codex state. **Do not share the entire `.codex` directory**; sessions and caches stay in private HOME. Existing private files are backed up with the `.before-shared` suffix; startup refuses to overwrite conflicting backups.
+Only these two files are linked into private Codex state. **Do not share the entire `.codex` directory**; Codex sessions and state stay in private HOME. Existing private files are backed up with the `.before-shared` suffix; startup refuses to overwrite conflicting backups.
 
 This mode supports **API keys only**, not ChatGPT OAuth credentials that require refresh writes. All participating instances can read the shared key; read-only access is not confidentiality. Skip `codex login/logout`. Atomic replacement of the shared files makes them available to subsequent reads, but does not guarantee live updates for in-flight tasks. Shared defaults are not an enforced policy.
+
+To reuse an existing `.codex` configuration with its owner's authorization, use `compose.shared-codex-files.yaml` **instead of** the directory override. It mounts only `config.toml` and `auth.json`; no separate shared directory is needed. Do not enable both Codex overrides. Files must be readable by the container user without loosening host credential permissions. Single-file binds can retain the old file after an atomic host replacement: wait for tasks to finish, run `docker compose up -d --force-recreate`, and verify a new task. Check host-specific paths, plugins, and other settings for container compatibility.
 
 ## Configuration
 

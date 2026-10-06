@@ -7,11 +7,17 @@
 - **开箱即用的工具：** Codex、Multica、Lark CLI、miniprogram-ci、Playwright CLI 和 Chromium，以及官方 Playwright 和 Lark skills。
 - **开发工具链：** Go、Node.js/npm/pnpm、Python/uv、C/C++、Git、gh、SSH 和 rsync。
 - **持久化用户数据：** 项目、凭据、会话、用户自行安装的工具和自定义 skills 都保存在 HOME 中，重建容器后仍然保留。
-- **可选共享：** 共享下载缓存和只读 Codex API-key 配置，不共享 HOME。
+- **共享下载缓存：** 默认使用 Docker/OrbStack 命名卷；Codex API-key 配置可按需只读共享，HOME 保持独立。
 
 镜像：`ghcr.io/creekxi2026/agent-runtime:latest`，支持 `linux/amd64` 和 `linux/arm64`。项目依赖需按各自的锁文件另行安装。镜像不包含应用代码、Docker/Podman 或数据库服务。
 
 [快速开始](#快速开始) · [存储](#存储) · [配置](#配置) · [使用](#使用) · [更新](#更新) · [开发](#开发)
+
+## 让 Agent 帮你配置
+
+让已有 Agent 阅读独立的[用户运行环境配置指引](docs/agent-setup.md)。它会依次确认实例名、用途、Multica 工作区及认证参数，核对已有软件并提出增装清单，等你确认后部署、验证并交付。无需安装引导 Skill；可直接说：
+
+> 阅读这个仓库的 docs/agent-setup.md，为用户配置一个运行环境，先给我软件和部署方案。
 
 ## 快速开始
 
@@ -19,13 +25,14 @@
 
 ### 1. 准备实例
 
-新实例只需下载 Compose 文件和环境变量文件：
+新实例需要基础 Compose、共享缓存 override 和环境变量文件：
 
 ```bash
 mkdir -p agent-runtime/user01
 cd agent-runtime/user01
 SOURCE=https://raw.githubusercontent.com/creekxi2026/agent-runtime/main
 curl -fL "$SOURCE/compose.yaml" -o compose.yaml
+curl -fL "$SOURCE/compose.shared-cache.yaml" -o compose.shared-cache.yaml
 curl -fL "$SOURCE/runtime.env.example" -o .env
 chmod 600 .env
 ```
@@ -34,7 +41,7 @@ chmod 600 .env
 
 ### 2. 先选存储，再登录
 
-默认使用 Docker 管理的私有 HOME 卷，不挂载任何共享目录。如果适合你的实例，可继续下一步。若要使用宿主机目录作为 HOME、共享缓存或共享 Codex 凭据，**请先完成[存储](#存储)配置**，包括下载 override 文件和设置 `COMPOSE_FILE`。登录命令会初始化所选 HOME；之后更换存储不会迁移这些文件。
+默认每个实例使用独立 HOME 卷，共用 `agent-runtime-download-cache` 下载缓存卷，无需宿主机缓存目录。环境变量模板已启用这套配置。若要使用宿主机目录作为 HOME、其他缓存来源或共享 Codex 凭据，**请先完成[存储](#存储)配置**，包括下载 override 文件和设置 `COMPOSE_FILE`。登录命令会初始化所选 HOME；之后更换存储不会迁移这些文件。
 
 ### 3. 认证
 
@@ -75,7 +82,7 @@ docker compose logs --tail=100 runtime
 | 数据 | 来源 | 容器路径 | 访问权限 |
 | --- | --- | --- | --- |
 | 私有 HOME | 命名卷 `<COMPOSE_PROJECT_NAME>-home`，或 `HOME_VOLUME`；也可通过 `HOME_DIR` 使用 bind 挂载 | `/home/agent` | 读写 |
-| 下载缓存 | 默认保存在私有 HOME；可选卷 `agent-runtime-download-cache`，或通过 `SHARED_CACHE_DIR` 使用 bind 挂载 | 启用后为 `/shared/caches` | 读写 |
+| 下载缓存 | 模板默认使用卷 `agent-runtime-download-cache`；可指定其他卷或显式使用 bind 挂载 | 启用后为 `/shared/caches` | 读写 |
 | 共享 Codex 配置 | 可选，通过 `SHARED_CODEX_DIR` 指定专用目录 | `/shared/codex` | 只读 |
 
 HOME 保存配置、凭据、会话、`workspace`、用户自行安装的工具和自定义 skills。**独立实例之间绝不能共用 HOME**，设置 `HOME_VOLUME` 时也一样。镜像管理的工具位于 `/opt`；HOME 卷使用 `nocopy`，不会把镜像内 HOME 的内容复制到持久化存储。
@@ -88,15 +95,16 @@ HOME 保存配置、凭据、会话、`workspace`、用户自行安装的工具�
 curl -fL "$SOURCE/compose.bind-home.yaml" -o compose.bind-home.yaml
 ```
 
-然后在 `.env` 中设置对应值：
+下列示例保留快速开始中下载的共享缓存 override，只有选择私有缓存时才移除它。在 `.env` 中设置对应值：
 
 | 存储方案 | 所需 override 文件 | 环境变量设置 |
 | --- | --- | --- |
-| 默认私有 HOME 卷 | 无 | 不设置 `COMPOSE_FILE` |
-| 私有 HOME bind 挂载 | [compose.bind-home.yaml](compose.bind-home.yaml) | `HOME_DIR=./home`; `COMPOSE_FILE=compose.yaml:compose.bind-home.yaml` |
-| 共享缓存卷 | [compose.shared-cache.yaml](compose.shared-cache.yaml) | `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml`; 可选设置 `SHARED_CACHE_VOLUME` |
+| 私有 HOME 和私有缓存 | 无 | 设置 `COMPOSE_FILE=compose.yaml` |
+| 私有 HOME bind 挂载 | [compose.bind-home.yaml](compose.bind-home.yaml) | `HOME_DIR=./home`; `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.bind-home.yaml` |
+| 默认：私有 HOME + 共享缓存卷 | [compose.shared-cache.yaml](compose.shared-cache.yaml) | `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml`; 可选设置 `SHARED_CACHE_VOLUME` |
 | 共享缓存 bind 挂载 | [compose.shared-cache.yaml](compose.shared-cache.yaml)，然后是 [compose.shared-cache.bind.yaml](compose.shared-cache.bind.yaml) | `SHARED_CACHE_DIR=../shared/caches`; `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.shared-cache.bind.yaml` |
-| 只读共享 Codex | [compose.shared-codex.yaml](compose.shared-codex.yaml) | `SHARED_CODEX_DIR=../shared-codex`; `COMPOSE_FILE=compose.yaml:compose.shared-codex.yaml` |
+| 只读共享 Codex | [compose.shared-codex.yaml](compose.shared-codex.yaml) | `SHARED_CODEX_DIR=../shared-codex`; `COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.shared-codex.yaml` |
+| 只读挂载已有 Codex 的两个文件 | [compose.shared-codex-files.yaml](compose.shared-codex-files.yaml) | `SHARED_CODEX_DIR` 指向获准的 Codex 配置目录；`COMPOSE_FILE=compose.yaml:compose.shared-cache.yaml:compose.shared-codex-files.yaml` |
 
 **文件顺序很重要：** `compose.yaml` 必须排在最前，每个 bind override 必须放在对应的命名卷配置之后。Windows 上，`COMPOSE_FILE` 用 `;` 分隔，而不是 `:`。设置后，登录、启动、进入 shell 和更新都使用普通 `docker compose` 命令；不要另传一份遗漏 override 的 `-f` 列表。
 
@@ -121,9 +129,11 @@ SHARED_CODEX_DIR=../shared-codex
 
 在执行任何登录或启动命令之前，创建一个**专用目录**，其中包含 `config.toml` 和 `auth.json`，且 UID/GID `1000:1000` 可读。可参考[配置模板](shared-codex/config.toml.example)和[认证模板](shared-codex/auth.json.example)。来源目录不存在时不会自动创建。
 
-只有这两个文件会链接到私有 Codex 状态目录。**不要共享整个 `.codex` 目录**；会话和缓存仍保存在私有 HOME。已有私有文件会以 `.before-shared` 后缀备份；若备份冲突，启动会拒绝覆盖。
+只有这两个文件会链接到私有 Codex 状态目录。**不要共享整个 `.codex` 目录**；Codex 会话和状态仍保存在私有 HOME。已有私有文件会以 `.before-shared` 后缀备份；若备份冲突，启动会拒绝覆盖。
 
 此模式**仅支持 API key**，不支持需要刷新写入的 ChatGPT OAuth 凭据。所有参与共享的实例都能读取密钥；只读不等于保密。跳过 `codex login/logout`。原子替换共享文件后，后续读取可以获得新内容，但不能保证正在执行的任务实时更新。共享默认配置不是强制策略。
+
+如果用户已授权复用现有 `.codex` 中的配置，使用 `compose.shared-codex-files.yaml` **替代**目录挂载 override，仅挂载 `config.toml` 与 `auth.json`，无需另建共享目录。不要同时启用这两个 Codex override。文件须可由容器用户读取；不要为此放宽宿主机凭据权限。单文件 bind 在宿主机原子替换文件后可能仍指向旧文件，待任务结束后执行 `docker compose up -d --force-recreate`，再验证新任务。主机专用路径、插件或其他配置也需检查容器兼容性。
 
 ## 配置
 

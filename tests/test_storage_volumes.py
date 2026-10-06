@@ -7,6 +7,17 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 
+def resolve_template(project, **values):
+    env = {k: os.environ[k] for k in ('PATH', 'HOME') if k in os.environ}
+    env.update(COMPOSE_PROJECT_NAME=project, **values)
+    result = subprocess.run(
+        ['docker', 'compose', '--project-directory', str(ROOT), '--env-file',
+         str(ROOT / 'runtime.env.example'), 'config', '--format', 'json'],
+        env=env, capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
 def resolve(project='storage-a', files=(), **values):
     env = {k: os.environ[k] for k in ('PATH', 'HOME') if k in os.environ}
     env.update(COMPOSE_PROJECT_NAME=project, **values)
@@ -18,6 +29,35 @@ def resolve(project='storage-a', files=(), **values):
     return json.loads(p.stdout)
 
 class StorageTests(unittest.TestCase):
+    def test_template_shares_cache_but_keeps_home_private(self):
+        for project in ('storage-a', 'storage-b'):
+            cfg = resolve_template(project)
+            self.assertEqual(cfg['volumes']['agent-home']['name'], project + '-home')
+            self.assertEqual(cfg['volumes']['download-cache']['name'], 'agent-runtime-download-cache')
+            runtime = cfg['services']['runtime']
+            mounts = {m['target']: m for m in runtime['volumes']}
+            self.assertEqual(set(mounts), {'/home/agent', '/shared/caches'})
+            self.assertEqual(mounts['/shared/caches']['type'], 'volume')
+            self.assertEqual(runtime['environment']['UV_CACHE_DIR'], '/shared/caches/uv')
+            self.assertNotIn('CODEX_SHARED_DIR', runtime['environment'])
+
+    def test_template_can_add_codex_files_without_losing_cache(self):
+        cfg = resolve_template('storage-a', SHARED_CODEX_DIR='/fixture/codex',
+            COMPOSE_FILE='compose.yaml:compose.shared-cache.yaml:compose.shared-codex-files.yaml')
+        mounts = {m['target']: m for m in cfg['services']['runtime']['volumes']}
+        self.assertEqual(mounts['/shared/caches']['type'], 'volume')
+        for name in ('config.toml', 'auth.json'):
+            mount = mounts['/shared/codex/' + name]
+            self.assertEqual(mount['source'], '/fixture/codex/' + name)
+            self.assertTrue(mount['read_only'])
+            self.assertFalse(mount['bind']['create_host_path'])
+
+    def test_template_can_select_private_caches(self):
+        cfg = resolve_template('storage-a', COMPOSE_FILE='compose.yaml')
+        runtime = cfg['services']['runtime']
+        self.assertEqual([m['target'] for m in runtime['volumes']], ['/home/agent'])
+        self.assertNotIn('UV_CACHE_DIR', runtime['environment'])
+
     def test_private_home_names_are_per_instance_and_overridable(self):
         a, b = resolve(), resolve('storage-b')
         self.assertEqual(a['volumes']['agent-home']['name'], 'storage-a-home')
