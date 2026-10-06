@@ -106,12 +106,7 @@ def main():
             cache = work / 'cache'
             common = ['docker', 'buildx', 'build', '--platform', 'linux/' + arch, '--provenance=false', '--sbom=false', '--build-arg', 'BASE_IMAGE=' + base]
             baseline = work / 'baseline.tar'
-            # Materialize both CLI stages for the baseline cache. A warm imported
-            # cache can satisfy the final linked COPY without retaining those
-            # intermediate results for a second export to a fresh builder.
-            run(common + ['--no-cache-filter', 'codex-tool,multica-tool',
-                          '--cache-to', f'type=local,dest={cache},mode=max',
-                          '--output', f'type=oci,dest={baseline}', '.'])
+            run(common + ['--cache-to', f'type=local,dest={cache},mode=max', '--output', f'type=oci,dest={baseline}', '.'])
             baseline_layers = image_layers(baseline)
             baseline.unlink()
             for tool, candidate in variants.items():
