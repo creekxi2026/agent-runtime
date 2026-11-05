@@ -183,7 +183,7 @@ Multica executes from `~/.local/bin/multica`, so atomic update files also stay i
 
 `~/.local/share/agent-runtime/tools.json` records initialization sources, not current versions. Existing conflicting user packages or commands are preserved, and deliberately removed initialized tools are not silently restored. Do not delete the entire record to force updates: use the package manager to update or restore individual tools and back up HOME contents needed for rollback. Do not manage one tool with both npm and pnpm. Tool directories cannot be reused across CPU architectures.
 
-Rolling back the image does not roll back HOME tools; restore the corresponding tool backups as necessary. Initialization writes HOME only after privilege dropping, without recursively changing workspace ownership. Initial copies increase HOME disk usage. A read-only root filesystem is supported with writable HOME; read-only HOME cannot be initialized or updated.
+Rolling back the image does not roll back HOME tools; restore the corresponding tool backups as necessary. Initialization writes HOME only after privilege dropping, without recursively changing workspace ownership. Initial copies increase HOME disk usage. A read-only root filesystem is supported with writable HOME; read-only HOME cannot be initialized or updated. HOME must allow execution (no `noexec` mount).
 
 Wait for running tasks to finish and back up HOME and `.env`. Keep the **same instance name, HOME backing store and `COMPOSE_FILE`** when updating:
 

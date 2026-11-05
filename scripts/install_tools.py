@@ -241,18 +241,15 @@ def install_npm(manifest, tmp, prefix):
     env = {**os.environ, "PATH": str(NODE / "bin") + ":" + os.environ.get("PATH", ""),
            "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1", "CI": "1", "NO_UPDATE_NOTIFIER": "1",
            "npm_config_cache": str(tmp / "npm-cache"), "npm_config_registry": "https://registry.npmjs.org"}
-    # Prime npm's cache from verified direct tarballs; preserve upstream
-    # transitive contracts and record the resolved tree in package-lock.json.
+    # Real global installs keep each tool's hoisted transitive dependencies inside
+    # its own package tree. Nested installs break upstream undeclared imports.
+    archives = []
     for index, (name, artifact) in enumerate(sorted(manifest["npm"].items())):
-        if name == "npm":
-            continue
-        archive = download(artifact, tmp / ("npm-" + str(index) + ".tgz"))
-        subprocess.run([npm, "cache", "add", str(archive)], env=env, check=True)
-    subprocess.run([npm, "install", "--prefix", str(prefix), "--no-audit", "--no-fund", "--prefer-offline", "--install-strategy=nested"], env=env, check=True)
-    (prefix / "bin").mkdir(exist_ok=True)
-    for source in sorted((prefix / "node_modules/.bin").iterdir()):
-        if source.is_symlink() and source.resolve().is_file():
-            (prefix / "bin" / source.name).symlink_to(os.path.relpath(source.resolve(), (prefix / "bin").resolve()))
+        if name != "npm":
+            archives.append(str(download(artifact, tmp / ("npm-" + str(index) + ".tgz"))))
+    allowed = [name for name, enabled in npm_plan(manifest)["allowScripts"].items() if enabled]
+    subprocess.run([npm, "install", "--prefix", str(prefix), "--global", "--no-audit", "--no-fund",
+                    "--prefer-offline", "--allow-scripts=" + ",".join(allowed), *archives], env=env, check=True)
 
 
 def verify(manifest, component="all"):
@@ -278,13 +275,13 @@ def verify(manifest, component="all"):
         # A full-manifest verification also supports the assembled split image.
         if component == "all" and name == "@openai/codex" and CODEX.exists():
             prefix = CODEX
-        root = NODE / "lib/node_modules/npm" if name == "npm" else prefix / "node_modules" / name
+        root = NODE / "lib/node_modules/npm" if name == "npm" else prefix / "lib/node_modules" / name
         actual = json.loads((root / "package.json").read_text())["version"]
         if actual != artifact["version"]:
             raise ValueError("Incorrect installed npm package: " + name)
     # Globally exposed Playwright is usable as a JS client, without browsers.
     if component in ("all", "core"):
-        subprocess.run([str(NODE / "bin/node"), "-e", "const p=require('/opt/agent-tools/node_modules/playwright'); if(typeof p.chromium.connect !== 'function') process.exit(1)"], check=True)
+        subprocess.run([str(NODE / "bin/node"), "-e", "const p=require('/opt/agent-tools/lib/node_modules/playwright'); if(typeof p.chromium.connect !== 'function') process.exit(1)"], check=True)
 
 
 def main():

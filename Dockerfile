@@ -50,7 +50,7 @@ COPY --chmod=755 scripts/init_user_tools.py /usr/local/bin/agent-init-tools
 # Keep immutable binary seeds off PATH; deleted user tools must not fall back.
 RUN mkdir -p /opt/runtime-seed/bin \
     && mv /usr/local/bin/gh /usr/local/bin/uv /usr/local/bin/uvx /opt/runtime-seed/bin/ \
-    && chown 0:0 /opt/agent-tools/node_modules/miniprogram-ci/dist/ci/android-miniapp-toolkit/lib/zipalign-linux
+    && chown 0:0 /opt/agent-tools/lib/node_modules/miniprogram-ci/dist/ci/android-miniapp-toolkit/lib/zipalign-linux
 
 FROM core AS codex-tool
 RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \

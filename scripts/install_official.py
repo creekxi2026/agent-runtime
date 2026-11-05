@@ -38,7 +38,7 @@ def install_debian_packages(packages):
 
 
 def install_native_helper(lock, arch, *, native=Path('/usr/bin/zipalign'),
-                          helper=Path('/opt/agent-tools/node_modules/miniprogram-ci/dist/ci/android-miniapp-toolkit/lib/zipalign-linux')):
+                          helper=Path('/opt/agent-tools/lib/node_modules/miniprogram-ci/dist/ci/android-miniapp-toolkit/lib/zipalign-linux')):
     install_debian_packages(lock['native_helpers'][arch])
     header = native.read_bytes()[:20]
     if (header[:6] != b'\x7fELF\x02\x01' or
@@ -55,7 +55,7 @@ def install_native_helper(lock, arch, *, native=Path('/usr/bin/zipalign'),
 def install_skills(lock):
     target = Path('/opt/agent-skills')
     target.mkdir()
-    shutil.copytree('/opt/agent-tools/node_modules/@playwright/cli/skills/playwright-cli', target / 'playwright-cli')
+    shutil.copytree('/opt/agent-tools/lib/node_modules/@playwright/cli/skills/playwright-cli', target / 'playwright-cli')
     artifact = lock['official_skills']['lark']
     if not re.fullmatch(r'[0-9a-f]{40}', artifact['commit']): raise ValueError('Invalid skills commit')
     if artifact['url'] != 'https://codeload.github.com/larksuite/cli/tar.gz/' + artifact['commit']:

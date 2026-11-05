@@ -116,7 +116,7 @@ def main():
         if name == 'npm':
             continue
         prefix = Path('/opt/codex' if name == '@openai/codex' else '/opt/agent-tools')
-        tools.append(npm_tool(prefix / 'node_modules' / name, name))
+        tools.append(npm_tool(prefix / 'lib/node_modules' / name, name))
     for name in ('multica', 'gh', 'uv', 'uvx'):
         source = Path('/opt/multica/bin/multica' if name == 'multica' else '/opt/runtime-seed/bin/' + name)
         tools.append({'id': 'binary:' + name, 'source': source,

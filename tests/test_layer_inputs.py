@@ -145,29 +145,24 @@ class LayerInputTests(unittest.TestCase):
             self.assertEqual(files[0].read_bytes(), b'fixture')
             self.assertEqual(files[0].stat().st_mode & 0o777, 0o755)
 
-    def test_codex_npm_prefix_contains_only_codex_and_relative_bin_links(self):
+    def test_codex_global_install_uses_verified_archive_and_scoped_script_policy(self):
         installer = load('install_tools')
         shard = self.split(self.manifest)['codex']
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             prefix = root / 'codex'
-            binary = prefix / 'node_modules/@openai/codex/bin/codex.js'
-            binary.parent.mkdir(parents=True)
-            binary.write_text('fixture')
-            links = prefix / 'node_modules/.bin'
-            links.mkdir()
-            (links / 'codex').symlink_to('../@openai/codex/bin/codex.js')
             with patch.object(installer, 'download', return_value=root / 'codex.tgz') as download, patch.object(installer.subprocess, 'run') as run:
                 installer.install_npm(shard, root, prefix)
                 self.assertEqual(download.call_count, 1)
                 self.assertEqual(download.call_args.args[0], shard['npm']['@openai/codex'])
                 self.assertEqual(run.call_args.args[0][1:4], ['install', '--prefix', str(prefix)])
+                self.assertIn('--global', run.call_args.args[0])
+                self.assertEqual(run.call_args.args[0][-1], str(root / 'codex.tgz'))
+                self.assertNotIn('--dangerously-allow-all-scripts', run.call_args.args[0])
             plan = json.loads((prefix / 'package.json').read_text())
             self.assertEqual(plan['dependencies'], {'@openai/codex': shard['versions']['codex']})
             self.assertNotIn('*', plan['allowScripts'])
             self.assertNotIn('pnpm@' + self.manifest['versions']['pnpm'], plan['allowScripts'])
-            self.assertEqual((prefix / 'bin/codex').resolve(), binary.resolve())
-            self.assertFalse((prefix / 'bin/codex').readlink().is_absolute())
 
     def test_core_verification_preserves_js_client_and_skips_both_clis(self):
         installer = load('install_tools')
