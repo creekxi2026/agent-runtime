@@ -22,7 +22,8 @@ if sys.argv[1] == 'update':
         'main': 'index.js', 'bin': {'miniprogram-ci': 'index.js'}}))
     (fixture / 'index.js').write_text('#!/usr/bin/env node\nmodule.exports="persistent-user-version"; if(require.main===module) console.log(module.exports);\n')
     # Tarball forces an actual global package installation rather than an npm link.
-    packed = json.loads(subprocess.check_output(['npm', 'pack', '--json', '--ignore-scripts'], cwd=fixture, text=True))[0]['filename']
+    result = json.loads(subprocess.check_output(['npm', 'pack', '--json', '--ignore-scripts'], cwd=fixture, text=True))
+    packed = (result[0] if isinstance(result, list) else result['miniprogram-ci'])['filename']
     subprocess.run(['npm', 'install', '-g', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', str(fixture / packed)], check=True)
 else:
     assert sys.argv[1] == 'check'
