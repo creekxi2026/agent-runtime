@@ -71,9 +71,9 @@ RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.
 
 FROM core AS runtime
 # --link keeps CLI layers independent; destinations must not traverse symlinks.
-COPY --link --from=codex-tool /opt/codex /opt/codex
+COPY --link --chown=0:0 --from=codex-tool /opt/codex /opt/codex
 # Immutable seed; the entrypoint installs the runtime copy into persistent HOME.
-COPY --link --from=multica-tool /opt/multica /opt/multica
+COPY --link --chown=0:0 --from=multica-tool /opt/multica /opt/multica
 # The full lock is metadata; component locks control installation layers.
 COPY runtime-deps.json /usr/share/agent-runtime/dependencies.json
 
