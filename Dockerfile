@@ -52,19 +52,22 @@ RUN mkdir -p /opt/runtime-seed/bin \
     && mv /usr/local/bin/gh /usr/local/bin/uv /usr/local/bin/uvx /opt/runtime-seed/bin/ \
     && chown 0:0 /opt/agent-tools/lib/node_modules/miniprogram-ci/dist/ci/android-miniapp-toolkit/lib/zipalign-linux
 
+# Stable seed timestamps preserve unrelated linked layers even after a cold rebuild.
 FROM core AS codex-tool
 RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \
     --mount=type=bind,source=.build-inputs/codex.json,target=/tmp/codex.json \
     PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install_tools.py \
       --component codex --manifest /tmp/codex.json --arch "${TARGETARCH}" \
-    && chmod -R go-w /opt/codex
+    && chmod -R go-w /opt/codex \
+    && find /opt/codex -exec touch -h -d @0 {} +
 
 FROM core AS multica-tool
 RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \
     --mount=type=bind,source=.build-inputs/multica.json,target=/tmp/multica.json \
     PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install_tools.py \
       --component multica --manifest /tmp/multica.json --arch "${TARGETARCH}" \
-    && chmod -R go-w /opt/multica
+    && chmod -R go-w /opt/multica \
+    && find /opt/multica -exec touch -h -d @0 {} +
 
 FROM core AS runtime
 # --link keeps CLI layers independent; destinations must not traverse symlinks.
