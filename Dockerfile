@@ -33,7 +33,7 @@ COPY --chmod=755 bootstrap.sh /usr/local/bin/agent-bootstrap
 COPY --chmod=755 entrypoint.sh /usr/local/bin/agent-entrypoint
 
 # Chromium's locked versions/checksums control this layer. Replace miniprogram-ci's
-# zipalign with the native architecture; only that helper is user-owned for signing.
+# zipalign with the native architecture; runtime signing uses its HOME copy.
 RUN --mount=type=bind,source=scripts,target=/tmp/install-scripts \
     --mount=type=bind,source=.build-inputs/core.json,target=/tmp/core.json \
     PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install-scripts/install_official.py \
@@ -46,25 +46,34 @@ RUN --mount=type=bind,source=scripts,target=/tmp/install-scripts \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 COPY playwright.json /usr/share/agent-runtime/playwright.json
 RUN chmod 755 /usr/share/agent-runtime && chmod 644 /usr/share/agent-runtime/playwright.json
+COPY --chmod=755 scripts/init_user_tools.py /usr/local/bin/agent-init-tools
+# Keep immutable binary seeds off PATH; deleted user tools must not fall back.
+RUN mkdir -p /opt/runtime-seed/bin \
+    && mv /usr/local/bin/gh /usr/local/bin/uv /usr/local/bin/uvx /opt/runtime-seed/bin/ \
+    && chown 0:0 /opt/agent-tools/lib/node_modules/miniprogram-ci/dist/ci/android-miniapp-toolkit/lib/zipalign-linux
 
+# Stable seed timestamps preserve unrelated linked layers even after a cold rebuild.
 FROM core AS codex-tool
 RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \
     --mount=type=bind,source=.build-inputs/codex.json,target=/tmp/codex.json \
     PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install_tools.py \
       --component codex --manifest /tmp/codex.json --arch "${TARGETARCH}" \
-    && chmod -R go-w /opt/codex
+    && chmod -R go-w /opt/codex \
+    && find /opt/codex -exec touch -h -d @0 {} +
 
 FROM core AS multica-tool
 RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \
     --mount=type=bind,source=.build-inputs/multica.json,target=/tmp/multica.json \
     PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install_tools.py \
       --component multica --manifest /tmp/multica.json --arch "${TARGETARCH}" \
-    && chmod -R go-w /opt/multica
+    && chmod -R go-w /opt/multica \
+    && find /opt/multica -exec touch -h -d @0 {} +
 
 FROM core AS runtime
 # --link keeps CLI layers independent; destinations must not traverse symlinks.
-COPY --link --from=codex-tool /opt/codex /opt/codex
-COPY --link --from=multica-tool /opt/multica/bin/multica /usr/local/bin/multica
+COPY --link --chown=0:0 --from=codex-tool /opt/codex /opt/codex
+# Immutable seed; the entrypoint installs the runtime copy into persistent HOME.
+COPY --link --chown=0:0 --from=multica-tool /opt/multica /opt/multica
 # The full lock is metadata; component locks control installation layers.
 COPY runtime-deps.json /usr/share/agent-runtime/dependencies.json
 
@@ -73,15 +82,17 @@ ENV HOME=/home/agent \
     CODEX_HOME=/home/agent/.codex LARKSUITE_CLI_CONFIG_DIR=/home/agent/.lark-cli \
     XDG_CONFIG_HOME=/home/agent/.config XDG_CACHE_HOME=/home/agent/.cache XDG_DATA_HOME=/home/agent/.local/share \
     BASH_ENV=/etc/profile.d/agent-tools.sh \
-    MULTICA_CODEX_PATH=/opt/agent-tools/bin/codex \
+    AGENT_RUNTIME_INIT=/usr/local/bin/agent-init-tools \
+    MULTICA_CODEX_PATH=/home/agent/.local/bin/codex \
     PLAYWRIGHT_BROWSERS_PATH=/home/agent/.cache/ms-playwright PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
-    NODE_PATH=/opt/agent-tools/node_modules \
+    NODE_PATH=/home/agent/.local/lib/node_modules \
+    PYTHONUSERBASE=/home/agent/.local \
     GOROOT=/opt/go GOPATH=/home/agent/.local/share/go GOBIN=/home/agent/.local/bin \
     GOTMPDIR=/home/agent/.cache/go-tmp \
     NPM_CONFIG_PREFIX=/home/agent/.local PNPM_HOME=/home/agent/.local/share/pnpm \
     UV_TOOL_DIR=/home/agent/.local/share/uv/tools UV_TOOL_BIN_DIR=/home/agent/.local/bin \
     UV_PYTHON_INSTALL_DIR=/home/agent/.local/share/uv/python \
-    PATH="/home/agent/.local/bin:/home/agent/.local/share/pnpm:/home/agent/.local/share/pnpm/bin:/opt/agent-tools/bin:/opt/node/bin:/opt/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    PATH="/home/agent/.local/bin:/home/agent/.local/share/pnpm:/home/agent/.local/share/pnpm/bin:/opt/node/bin:/opt/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1
 USER 1000:1000
 WORKDIR /home/agent

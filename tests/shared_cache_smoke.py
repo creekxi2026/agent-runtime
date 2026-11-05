@@ -100,6 +100,15 @@ else:
             if MODE == 'bind': files += ['compose.bind-home.yaml', 'compose.shared-cache.bind.yaml']
             else: env.update(HOME_VOLUME=homes[i], SHARED_CACHE_VOLUME=shared_volume)
             return ['docker', 'compose', '--env-file', '/dev/null', *sum((['-f', str(ROOT / f)] for f in files), [])], env
+        def wait_ready(name):
+            run(['docker', 'exec', '--user', '1000:1000', name, 'python3', '-c', """import pathlib, time
+for attempt in range(600):
+    if pathlib.Path('/tmp/cache-smoke-ready').is_file():
+        break
+    time.sleep(0.1)
+else:
+    raise RuntimeError('Runtime did not finish HOME initialization')
+"""])
         def start(i):
             args, env = compose(i)
             config = json.loads(run(args + ['config', '--format', 'json'], env))
@@ -109,7 +118,8 @@ else:
                 if mount['type'] == 'volume': mount['source'] = config['volumes'][mount['source']]['name']
                 elif mount['type'] == 'bind': Path(mount['source']).mkdir(parents=True, exist_ok=True)
             runtime['network_mode'] = 'container:' + server
-            names[i] = resources.start_container(container_args(runtime, ['sh', '-ec', 'id; cat /proc/self/status; exec sleep 600']))
+            names[i] = resources.start_container(container_args(runtime, ['sh', '-ec', 'id; cat /proc/self/status; touch /tmp/cache-smoke-ready; exec sleep 600']))
+            wait_ready(names[i])
         for i in range(2): start(i)
         for name in names:
             run(['docker', 'exec', '--user', '1000:1000', name, 'sh', '-ec', 'test -w /shared/caches/npm; test -w /shared/caches/go-mod; test -w /shared/caches/uv'])
@@ -157,6 +167,7 @@ else:
         run(['docker', 'exec', '--user', '1000:1000', names[0], 'sh', '-ec', 'echo changed > workspace/first/node_modules/cache-fixture/index.js; for f in workspace/first/.venv/lib/python*/site-packages/cache_fixture/__init__.py; do echo changed > "$f"; done; echo changed > workspace/first/private-go'])
         run(['docker', 'exec', '--user', '1000:1000', names[1], 'sh', '-ec', 'cd workspace/first; node -e \'if(require("cache-fixture")!=="fixture")process.exit(1)\'; .venv/bin/python -c \'import cache_fixture; assert cache_fixture.VALUE == "fixture"\'; test "$(./private-go)" = fixture'])
         run(['docker', 'restart', *names])
+        for name in names: wait_ready(name)
         install(1, True, 'restart')
         for cid in names: resources.remove_container(cid)
         for i in range(2): start(i)

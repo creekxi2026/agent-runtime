@@ -11,3 +11,5 @@ scripts/*
 !runtime-deps.json
 !.build-inputs/
 !.build-inputs/*.json
+
+!scripts/init_user_tools.py
