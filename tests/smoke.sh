@@ -96,7 +96,7 @@ for mode in -lc -ic -ilc; do
     --cap-drop ALL --security-opt no-new-privileges --entrypoint /bin/bash "$IMAGE" "$mode" '
     set -eu
     mkdir -p "$CODEX_HOME"
-    for tool in node codex lark-cli playwright-cli miniprogram-ci; do command -v "$tool"; done
+    for tool in node codex multica lark-cli playwright-cli miniprogram-ci; do command -v "$tool"; done
     case ":$PATH:" in *:/opt/agent-tools/bin:*) ;; *) exit 14 ;; esac
     case ":$PATH:" in *:/opt/node/bin:*) ;; *) exit 15 ;; esac
     lark-cli --help >/dev/null
@@ -104,6 +104,9 @@ for mode in -lc -ic -ilc; do
     miniprogram-ci --help >/dev/null
   '
 done
+# Exercise the updater's sibling-temp + atomic-replace contract as the daemon UID.
+docker run --rm -i --network none --user 1000:1000 --cap-drop ALL \
+  --security-opt no-new-privileges --entrypoint python3 "$IMAGE" - < tests/multica_update_probe.py
 # sign() unconditionally chmods its helper. The supported Compose rootfs is
 # writable; read-only rootfs tool-discovery above cannot exercise that contract.
 docker run --rm -i --network none --user 1000:1000 --cap-drop ALL \

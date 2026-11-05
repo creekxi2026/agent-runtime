@@ -187,13 +187,13 @@ class LayerInputTests(unittest.TestCase):
         self.assertIn('FROM core AS multica-tool', text)
         self.assertIn('FROM core AS runtime', text)
         self.assertIn('COPY --link --from=codex-tool /opt/codex /opt/codex', text)
-        self.assertIn('COPY --link --from=multica-tool /opt/multica/bin/multica /usr/local/bin/multica', text)
+        self.assertIn('COPY --link --chown=1000:1000 --from=multica-tool /opt/multica /opt/multica', text)
         core = text.split('FROM core AS codex-tool')[0]
         self.assertNotIn('COPY runtime-deps.json', core)
         self.assertNotIn('.build-inputs/codex.json', core)
         self.assertNotIn('.build-inputs/multica.json', core)
         self.assertIn('ln -s /opt/codex/bin/codex /opt/agent-tools/bin/codex', core)
-        self.assertGreater(text.index('COPY runtime-deps.json'), text.index('COPY --link --from=multica-tool'))
+        self.assertGreater(text.index('COPY runtime-deps.json'), text.index('COPY --link --chown=1000:1000 --from=multica-tool'))
         self.assertNotIn('COPY --from=core', text)
 
 

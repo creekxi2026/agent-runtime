@@ -64,7 +64,9 @@ RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.
 FROM core AS runtime
 # --link keeps CLI layers independent; destinations must not traverse symlinks.
 COPY --link --from=codex-tool /opt/codex /opt/codex
-COPY --link --from=multica-tool /opt/multica/bin/multica /usr/local/bin/multica
+# The updater creates a sibling temporary file and atomically replaces the CLI.
+# Keep only this CLI directory writable; bootstrap and other tools stay root-owned.
+COPY --link --chown=1000:1000 --from=multica-tool /opt/multica /opt/multica
 # The full lock is metadata; component locks control installation layers.
 COPY runtime-deps.json /usr/share/agent-runtime/dependencies.json
 
@@ -81,7 +83,7 @@ ENV HOME=/home/agent \
     NPM_CONFIG_PREFIX=/home/agent/.local PNPM_HOME=/home/agent/.local/share/pnpm \
     UV_TOOL_DIR=/home/agent/.local/share/uv/tools UV_TOOL_BIN_DIR=/home/agent/.local/bin \
     UV_PYTHON_INSTALL_DIR=/home/agent/.local/share/uv/python \
-    PATH="/home/agent/.local/bin:/home/agent/.local/share/pnpm:/home/agent/.local/share/pnpm/bin:/opt/agent-tools/bin:/opt/node/bin:/opt/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    PATH="/home/agent/.local/bin:/home/agent/.local/share/pnpm:/home/agent/.local/share/pnpm/bin:/opt/multica/bin:/opt/agent-tools/bin:/opt/node/bin:/opt/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1
 USER 1000:1000
 WORKDIR /home/agent

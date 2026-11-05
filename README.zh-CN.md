@@ -175,6 +175,8 @@ docker compose exec --user 1000:1000 runtime bash
 
 ## 更新
 
+Multica CLI 位于 `agent` 可写的 `/opt/multica/bin`，支持界面触发的手动更新；`/usr/local/bin` 和其中的启动脚本仍由 root 管理。默认仍关闭自动更新。手动更新仅保存在容器可写层，重启保留，重建后使用新镜像附带的版本；只读根文件系统不支持在线更新。
+
 等待运行中的任务结束，并备份 HOME 和 `.env`。更新时保持**实例名、HOME 存储和 `COMPOSE_FILE` 不变**：
 
 ```bash

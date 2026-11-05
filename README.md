@@ -175,6 +175,8 @@ Container consoles and `docker compose exec` may otherwise default to root. Use 
 
 ## Updates
 
+The Multica CLI lives in agent-owned `/opt/multica/bin` so UI-triggered manual updates can replace it; `/usr/local/bin` and its startup scripts remain root-owned. Automatic updates remain disabled by default. Manual updates live in the container writable layer: they survive restarts, but recreation uses the version bundled in the new image. Online updates require a writable root filesystem.
+
 Wait for running tasks to finish and back up HOME and `.env`. Keep the **same instance name, HOME backing store and `COMPOSE_FILE`** when updating:
 
 ```bash
