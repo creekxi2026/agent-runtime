@@ -243,13 +243,18 @@ def install_npm(manifest, tmp, prefix):
            "npm_config_cache": str(tmp / "npm-cache"), "npm_config_registry": "https://registry.npmjs.org"}
     # Real global installs keep each tool's hoisted transitive dependencies inside
     # its own package tree. Nested installs break upstream undeclared imports.
-    archives = []
+    specs = []
     for index, (name, artifact) in enumerate(sorted(manifest["npm"].items())):
         if name != "npm":
-            archives.append(str(download(artifact, tmp / ("npm-" + str(index) + ".tgz"))))
-    allowed = [name for name, enabled in npm_plan(manifest)["allowScripts"].items() if enabled]
+            archive = download(artifact, tmp / ("npm-" + str(index) + ".tgz"))
+            subprocess.run([npm, "cache", "add", str(archive)], env=env, check=True)
+            specs.append(name + "@" + artifact["version"])
+    # The global CLI policy accepts package names, not project version selectors.
+    # Verified archives prime the cache; named registry specs preserve script identity.
+    allowed = [name for name in manifest["npm"] if name in {"pnpm", "@larksuite/cli"}]
+    allowed += ["@swc/core", "@parcel/watcher"]
     subprocess.run([npm, "install", "--prefix", str(prefix), "--global", "--no-audit", "--no-fund",
-                    "--prefer-offline", "--allow-scripts=" + ",".join(allowed), *archives], env=env, check=True)
+                    "--prefer-offline", "--allow-scripts=" + ",".join(allowed), *specs], env=env, check=True)
 
 
 def verify(manifest, component="all"):
