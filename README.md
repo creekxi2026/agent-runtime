@@ -175,7 +175,15 @@ Container consoles and `docker compose exec` may otherwise default to root. Use 
 
 ## Updates
 
-The Multica CLI lives in agent-owned `/opt/multica/bin` so UI-triggered manual updates can replace it; `/usr/local/bin` and its startup scripts remain root-owned. Automatic updates remain disabled by default. Manual updates live in the container writable layer: they survive restarts, but recreation uses the version bundled in the new image. Online updates require a writable root filesystem.
+Multica, Codex, miniprogram-ci, Lark CLI, Playwright CLI, pnpm, gh and uv are seeded offline from verified image copies into HOME on first startup. Later starts and container recreation preserve user-installed versions. Node/npm, the Go SDK, system Python and system libraries remain image-managed. Replacing the image does not upgrade tools already initialized in HOME.
+
+Commands live primarily in `~/.local/bin`, npm global packages in `~/.local/lib/node_modules`, uv tools in `~/.local/share/uv/tools`, and pnpm globals under `~/.local/share/pnpm`; Go installs into `GOBIN=~/.local/bin`. Enter with `docker compose exec --user 1000:1000 runtime bash`, then use `npm install -g`, `uv tool install` or `go install`. Use project virtual environments for Python dependencies, without sudo or system pip.
+
+Multica executes from `~/.local/bin/multica`, so atomic update files also stay in HOME; automatic updates remain disabled. The fixed Codex path and CommonJS global lookup point to HOME; project dependencies still take precedence, and ES module projects should declare SDK dependencies themselves. Updating miniprogram-ci may replace its Android signing helper: verify zipalign architecture before using that feature. Validate Playwright CLI and browser compatibility separately.
+
+`~/.local/share/agent-runtime/tools.json` records initialization sources, not current versions. Existing conflicting user packages or commands are preserved, and deliberately removed initialized tools are not silently restored. Do not delete the entire record to force updates: use the package manager to update or restore individual tools and back up HOME contents needed for rollback. Do not manage one tool with both npm and pnpm. Tool directories cannot be reused across CPU architectures.
+
+Rolling back the image does not roll back HOME tools; restore the corresponding tool backups as necessary. Initialization writes HOME only after privilege dropping, without recursively changing workspace ownership. Initial copies increase HOME disk usage. A read-only root filesystem is supported with writable HOME; read-only HOME cannot be initialized or updated.
 
 Wait for running tasks to finish and back up HOME and `.env`. Keep the **same instance name, HOME backing store and `COMPOSE_FILE`** when updating:
 

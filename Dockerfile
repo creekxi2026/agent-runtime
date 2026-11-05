@@ -31,6 +31,7 @@ RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.
 COPY --chmod=644 agent-tools-path.sh /etc/profile.d/agent-tools.sh
 COPY --chmod=755 bootstrap.sh /usr/local/bin/agent-bootstrap
 COPY --chmod=755 entrypoint.sh /usr/local/bin/agent-entrypoint
+COPY --chmod=644 scripts/init_user_tools.py /usr/local/lib/agent-runtime/init_user_tools.py
 
 # Chromium's locked versions/checksums control this layer. Replace miniprogram-ci's
 # zipalign with the native architecture; only that helper is user-owned for signing.
@@ -64,9 +65,8 @@ RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.
 FROM core AS runtime
 # --link keeps CLI layers independent; destinations must not traverse symlinks.
 COPY --link --from=codex-tool /opt/codex /opt/codex
-# The updater creates a sibling temporary file and atomically replaces the CLI.
-# Keep only this CLI directory writable; bootstrap and other tools stay root-owned.
-COPY --link --chown=1000:1000 --from=multica-tool /opt/multica /opt/multica
+# Immutable seed; the entrypoint installs the runtime copy into persistent HOME.
+COPY --link --from=multica-tool /opt/multica /opt/multica
 # The full lock is metadata; component locks control installation layers.
 COPY runtime-deps.json /usr/share/agent-runtime/dependencies.json
 
@@ -75,15 +75,17 @@ ENV HOME=/home/agent \
     CODEX_HOME=/home/agent/.codex LARKSUITE_CLI_CONFIG_DIR=/home/agent/.lark-cli \
     XDG_CONFIG_HOME=/home/agent/.config XDG_CACHE_HOME=/home/agent/.cache XDG_DATA_HOME=/home/agent/.local/share \
     BASH_ENV=/etc/profile.d/agent-tools.sh \
-    MULTICA_CODEX_PATH=/opt/agent-tools/bin/codex \
+    AGENT_RUNTIME_INIT=/usr/local/lib/agent-runtime/init_user_tools.py \
+    MULTICA_CODEX_PATH=/home/agent/.local/bin/codex \
     PLAYWRIGHT_BROWSERS_PATH=/home/agent/.cache/ms-playwright PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
-    NODE_PATH=/opt/agent-tools/node_modules \
+    NODE_PATH=/home/agent/.local/lib/node_modules \
+    PYTHONUSERBASE=/home/agent/.local \
     GOROOT=/opt/go GOPATH=/home/agent/.local/share/go GOBIN=/home/agent/.local/bin \
     GOTMPDIR=/home/agent/.cache/go-tmp \
     NPM_CONFIG_PREFIX=/home/agent/.local PNPM_HOME=/home/agent/.local/share/pnpm \
     UV_TOOL_DIR=/home/agent/.local/share/uv/tools UV_TOOL_BIN_DIR=/home/agent/.local/bin \
     UV_PYTHON_INSTALL_DIR=/home/agent/.local/share/uv/python \
-    PATH="/home/agent/.local/bin:/home/agent/.local/share/pnpm:/home/agent/.local/share/pnpm/bin:/opt/multica/bin:/opt/agent-tools/bin:/opt/node/bin:/opt/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    PATH="/home/agent/.local/bin:/home/agent/.local/share/pnpm:/home/agent/.local/share/pnpm/bin:/opt/node/bin:/opt/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1
 USER 1000:1000
 WORKDIR /home/agent

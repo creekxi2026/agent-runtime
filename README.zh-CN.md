@@ -175,7 +175,15 @@ docker compose exec --user 1000:1000 runtime bash
 
 ## 更新
 
-Multica CLI 位于 `agent` 可写的 `/opt/multica/bin`，支持界面触发的手动更新；`/usr/local/bin` 和其中的启动脚本仍由 root 管理。默认仍关闭自动更新。手动更新仅保存在容器可写层，重启保留，重建后使用新镜像附带的版本；只读根文件系统不支持在线更新。
+Multica、Codex、miniprogram-ci、Lark CLI、Playwright CLI、pnpm、gh 和 uv 在首次启动时从镜像的已验证副本离线初始化到 HOME，随后使用用户版本；重启或使用同一 HOME 重建容器都不会覆盖这些工具的更新。系统 Node/npm、Go SDK、Python 和系统库仍随镜像维护。仅更换镜像不会升级已经初始化的 HOME 工具。
+
+主要命令目录是 `~/.local/bin`，npm 全局包在 `~/.local/lib/node_modules`，uv 工具在 `~/.local/share/uv/tools`，Go 安装到 `GOBIN=~/.local/bin`，pnpm 全局工具在 `~/.local/share/pnpm`。以 `docker compose exec --user 1000:1000 runtime bash` 进入后执行 `npm install -g`、`uv tool install` 或 `go install`，默认安装均留在 HOME；Python 项目依赖使用项目虚拟环境，不使用 sudo 或系统 pip。
+
+Multica 实际二进制位于 `~/.local/bin/multica`，更新临时文件也位于 HOME；自动更新仍默认关闭。Codex 的固定路径和 Node 的 CommonJS 全局查找路径均指向 HOME，项目依赖仍优先；ES module 项目应自行声明 SDK 依赖。miniprogram-ci 包升级可能替换其 Android 签名 helper，使用该功能前需核验 zipalign 的架构；Playwright CLI 与浏览器版本也需分别验证。
+
+初始化记录位于 `~/.local/share/agent-runtime/tools.json`，记录的是初始来源而非当前版本；已存在的同名用户包或命令会保留，已初始化后删除的工具不会自动重装。不要手动删除整个记录来强制更新；用对应包管理器更新或恢复工具，操作前备份需要回退的 HOME 内容。同一工具不要同时交给 npm 和 pnpm 管理。HOME 内工具不支持直接跨 CPU 架构复用。
+
+回退镜像不会自动回退 HOME 工具；恢复时还需处理相应用户工具的备份。初始化仅在降权后写 HOME，不会递归修改工作区权限；首次复制增加 HOME 磁盘占用。只读根文件系统可配合可写 HOME 使用，HOME 本身不可写则无法初始化或更新。
 
 等待运行中的任务结束，并备份 HOME 和 `.env`。更新时保持**实例名、HOME 存储和 `COMPOSE_FILE` 不变**：
 

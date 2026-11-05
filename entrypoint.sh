@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 umask 077
+if [ -n "${AGENT_RUNTIME_INIT:-}" ]; then /usr/bin/python3 "$AGENT_RUNTIME_INIT"; fi
 mkdir -p "$CODEX_HOME" "$HOME/workspace" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.cache" "$HOME/.cache/go-tmp"
 # Remove only stale image-managed skill links; preserve custom skills.
 managed=${AGENT_MANAGED_SKILLS_DIR:-/opt/agent-skills}

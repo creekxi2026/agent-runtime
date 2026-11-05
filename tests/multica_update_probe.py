@@ -7,7 +7,7 @@ import tempfile
 
 assert os.getuid() == 1000
 binary = Path(shutil.which("multica"))
-assert binary == Path("/opt/multica/bin/multica"), binary
+assert binary == Path.home() / ".local/bin/multica", binary
 assert not os.access("/usr/local/bin", os.W_OK)
 for name in ("agent-bootstrap", "agent-entrypoint", "gh", "uv"):
     assert not os.access(Path("/usr/local/bin") / name, os.W_OK), name

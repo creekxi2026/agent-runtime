@@ -83,8 +83,8 @@ docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000
   python3 -m json.tool /usr/share/agent-runtime/dependencies.json >/dev/null
   test "$(command -v bwrap)" = /usr/bin/bwrap
   bwrap --version
-  case "$(command -v codex)" in /home/agent/*) exit 10 ;; esac
-  case "$(command -v lark-cli)" in /home/agent/*) exit 11 ;; esac
+  test "$(command -v codex)" = /home/agent/.local/bin/codex
+  test "$(command -v lark-cli)" = /home/agent/.local/bin/lark-cli
   test ! -S /tmp/podman.sock
   test ! -S /var/run/docker.sock
   if touch /rootfs-write-probe 2>/dev/null; then exit 12; fi
@@ -93,11 +93,11 @@ docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000
 for mode in -lc -ic -ilc; do
   printf 'Checking tool PATH with bash %s\n' "$mode"
   docker run --rm --network none --read-only --tmpfs /home/agent:uid=1000,gid=1000,mode=700 --tmpfs /tmp \
-    --cap-drop ALL --security-opt no-new-privileges --entrypoint /bin/bash "$IMAGE" "$mode" '
+    --cap-drop ALL --security-opt no-new-privileges "$IMAGE" /bin/bash "$mode" '
     set -eu
     mkdir -p "$CODEX_HOME"
     for tool in node codex multica lark-cli playwright-cli miniprogram-ci; do command -v "$tool"; done
-    case ":$PATH:" in *:/opt/agent-tools/bin:*) ;; *) exit 14 ;; esac
+    test "$(command -v multica)" = /home/agent/.local/bin/multica
     case ":$PATH:" in *:/opt/node/bin:*) ;; *) exit 15 ;; esac
     lark-cli --help >/dev/null
     miniprogram-ci --version
@@ -106,12 +106,14 @@ for mode in -lc -ic -ilc; do
 done
 # Exercise the updater's sibling-temp + atomic-replace contract as the daemon UID.
 docker run --rm -i --network none --user 1000:1000 --cap-drop ALL \
-  --security-opt no-new-privileges --entrypoint python3 "$IMAGE" - < tests/multica_update_probe.py
+  --security-opt no-new-privileges --tmpfs /home/agent:uid=1000,gid=1000,mode=700 "$IMAGE" python3 - < tests/multica_update_probe.py
 # sign() unconditionally chmods its helper. The supported Compose rootfs is
 # writable; read-only rootfs tool-discovery above cannot exercise that contract.
 docker run --rm -i --network none --user 1000:1000 --cap-drop ALL \
   --security-opt no-new-privileges --tmpfs /home/agent:uid=1000,gid=1000,mode=700 \
-  --entrypoint python3 "$IMAGE" - < tests/native_helper_probe.py
+  "$IMAGE" python3 - < tests/native_helper_probe.py
+compose "$project-updates" run --rm -T runtime python3 - update < tests/user_tools_recreation.py
+compose "$project-updates" run --rm -T runtime python3 - check < tests/user_tools_recreation.py
 compose "$project-a" run --rm runtime sh -ec 'printf a > /home/agent/workspace/tenant-a'
 compose "$project-b" run --rm runtime sh -ec 'test ! -e /home/agent/workspace/tenant-a; printf b > /home/agent/workspace/tenant-b'
 compose "$project-a" run --rm runtime sh -ec 'test -f /home/agent/workspace/tenant-a; test ! -e /home/agent/workspace/tenant-b'

@@ -248,7 +248,7 @@ def install_npm(manifest, tmp, prefix):
             continue
         archive = download(artifact, tmp / ("npm-" + str(index) + ".tgz"))
         subprocess.run([npm, "cache", "add", str(archive)], env=env, check=True)
-    subprocess.run([npm, "install", "--prefix", str(prefix), "--no-audit", "--no-fund", "--prefer-offline"], env=env, check=True)
+    subprocess.run([npm, "install", "--prefix", str(prefix), "--no-audit", "--no-fund", "--prefer-offline", "--install-strategy=nested"], env=env, check=True)
     (prefix / "bin").mkdir(exist_ok=True)
     for source in sorted((prefix / "node_modules/.bin").iterdir()):
         if source.is_symlink() and source.resolve().is_file():

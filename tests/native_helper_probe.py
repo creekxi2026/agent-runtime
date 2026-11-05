@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import zipfile
 
-HELPER = Path('/opt/agent-tools/node_modules/miniprogram-ci/dist/ci/android-miniapp-toolkit/lib/zipalign-linux')
+HELPER = Path.home() / '.local/lib/node_modules/miniprogram-ci/dist/ci/android-miniapp-toolkit/lib/zipalign-linux'
 
 
 def probe():
