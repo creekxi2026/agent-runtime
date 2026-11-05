@@ -9,8 +9,11 @@ assert os.getuid() == 1000
 binary = Path(shutil.which("multica"))
 assert binary == Path.home() / ".local/bin/multica", binary
 assert not os.access("/usr/local/bin", os.W_OK)
-for name in ("agent-bootstrap", "agent-entrypoint", "gh", "uv"):
+for name in ("agent-bootstrap", "agent-entrypoint", "agent-init-tools"):
     assert not os.access(Path("/usr/local/bin") / name, os.W_OK), name
+for name in ("gh", "uv", "uvx"):
+    assert not os.access(Path("/opt/runtime-seed/bin") / name, os.W_OK)
+    assert Path(shutil.which(name)).parent == Path.home() / ".local/bin"
 before = subprocess.check_output([str(binary), "--version"])
 temporary = None
 try:

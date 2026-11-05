@@ -31,10 +31,9 @@ RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.
 COPY --chmod=644 agent-tools-path.sh /etc/profile.d/agent-tools.sh
 COPY --chmod=755 bootstrap.sh /usr/local/bin/agent-bootstrap
 COPY --chmod=755 entrypoint.sh /usr/local/bin/agent-entrypoint
-COPY --chmod=644 scripts/init_user_tools.py /usr/local/lib/agent-runtime/init_user_tools.py
 
 # Chromium's locked versions/checksums control this layer. Replace miniprogram-ci's
-# zipalign with the native architecture; only that helper is user-owned for signing.
+# zipalign with the native architecture; runtime signing uses its HOME copy.
 RUN --mount=type=bind,source=scripts,target=/tmp/install-scripts \
     --mount=type=bind,source=.build-inputs/core.json,target=/tmp/core.json \
     PYTHONDONTWRITEBYTECODE=1 python3 /tmp/install-scripts/install_official.py \
@@ -47,6 +46,11 @@ RUN --mount=type=bind,source=scripts,target=/tmp/install-scripts \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 COPY playwright.json /usr/share/agent-runtime/playwright.json
 RUN chmod 755 /usr/share/agent-runtime && chmod 644 /usr/share/agent-runtime/playwright.json
+COPY --chmod=755 scripts/init_user_tools.py /usr/local/bin/agent-init-tools
+# Keep immutable binary seeds off PATH; deleted user tools must not fall back.
+RUN mkdir -p /opt/runtime-seed/bin \
+    && mv /usr/local/bin/gh /usr/local/bin/uv /usr/local/bin/uvx /opt/runtime-seed/bin/ \
+    && chown 0:0 /opt/agent-tools/node_modules/miniprogram-ci/dist/ci/android-miniapp-toolkit/lib/zipalign-linux
 
 FROM core AS codex-tool
 RUN --mount=type=bind,source=scripts/install_tools.py,target=/tmp/install_tools.py \
@@ -75,7 +79,7 @@ ENV HOME=/home/agent \
     CODEX_HOME=/home/agent/.codex LARKSUITE_CLI_CONFIG_DIR=/home/agent/.lark-cli \
     XDG_CONFIG_HOME=/home/agent/.config XDG_CACHE_HOME=/home/agent/.cache XDG_DATA_HOME=/home/agent/.local/share \
     BASH_ENV=/etc/profile.d/agent-tools.sh \
-    AGENT_RUNTIME_INIT=/usr/local/lib/agent-runtime/init_user_tools.py \
+    AGENT_RUNTIME_INIT=/usr/local/bin/agent-init-tools \
     MULTICA_CODEX_PATH=/home/agent/.local/bin/codex \
     PLAYWRIGHT_BROWSERS_PATH=/home/agent/.cache/ms-playwright PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     NODE_PATH=/home/agent/.local/lib/node_modules \

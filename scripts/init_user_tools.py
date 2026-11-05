@@ -118,7 +118,7 @@ def main():
         prefix = Path('/opt/codex' if name == '@openai/codex' else '/opt/agent-tools')
         tools.append(npm_tool(prefix / 'node_modules' / name, name))
     for name in ('multica', 'gh', 'uv', 'uvx'):
-        source = Path('/opt/multica/bin/multica' if name == 'multica' else '/usr/local/bin/' + name)
+        source = Path('/opt/multica/bin/multica' if name == 'multica' else '/opt/runtime-seed/bin/' + name)
         tools.append({'id': 'binary:' + name, 'source': source,
                       'target': Path('.local/bin') / name,
                       'version': manifest['versions']['uv' if name == 'uvx' else name]})
